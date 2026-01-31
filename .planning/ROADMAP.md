@@ -28,11 +28,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. SYSTEM_PROMPT in `llm_adapter.py` does not mention `talib` in the allowed imports list
   3. When the LLM API times out, the system returns an error result (not mock-generated RSI code)
   4. Mock LLM only activates when `API_KEY` environment variable is unset, not on API errors or timeouts
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 01-01: Remove talib from allowlist and prompt
-- [ ] 01-02: Fix mock LLM fallback behavior
+- [ ] 01-01-PLAN.md — Remove talib from ALLOWED_MODULES and SYSTEM_PROMPT
+- [ ] 01-02-PLAN.md — Fix mock LLM fallback to only activate without API key
 
 ### Phase 2: Prompt Engineering for Correct Tool Generation
 **Goal**: The LLM generates self-contained financial tools that accept data as arguments, use only pandas/numpy for calculations, and return correctly typed results
@@ -85,7 +85,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Allowlist Cleanup & Fallback Fix | 0/2 | Not started | - |
+| 1. Allowlist Cleanup & Fallback Fix | 0/2 | Planned | - |
 | 2. Prompt Engineering for Correct Tool Generation | 0/2 | Not started | - |
 | 3. Refiner Pipeline Repair | 0/2 | Not started | - |
 | 4. Regression Verification | 0/1 | Not started | - |
