@@ -1,0 +1,87 @@
+# Requirements: Yunjue Agent Benchmark Fix Sprint
+
+**Defined:** 2026-01-31
+**Core Value:** Benchmark task success rate >= 80%
+
+## v1 Requirements
+
+### LLM Prompt & Allowlist
+
+- [ ] **PROMPT-01**: Remove `talib` from SYSTEM_PROMPT allowed imports list in `llm_adapter.py`
+- [ ] **PROMPT-02**: Remove `talib` from ALLOWED_MODULES in `executor.py`
+- [ ] **PROMPT-03**: Add explicit instruction in SYSTEM_PROMPT to implement technical indicators using pandas/numpy only (no external indicator libraries)
+- [ ] **PROMPT-04**: Add instruction in SYSTEM_PROMPT to accept price data as function arguments rather than fetching internally
+
+### Refiner Pipeline
+
+- [ ] **REFNR-01**: `generate_tool_code` returns `text_response` in its result dict
+- [ ] **REFNR-02**: Refiner's `analyze_error` correctly extracts LLM analysis from `text_response`
+- [ ] **REFNR-03**: Add `ModuleNotFoundError`, `ImportError`, `AssertionError` to refiner's ERROR_PATTERNS
+- [ ] **REFNR-04**: Refiner patch prompt includes instruction to avoid talib and use pandas/numpy
+
+### Mock LLM Fallback
+
+- [ ] **MOCK-01**: On LLM timeout, return error result instead of falling back to mock
+- [ ] **MOCK-02**: Mock LLM only activates when no API key is configured (not on timeout)
+
+### Tool Data Patterns
+
+- [ ] **DATA-01**: SYSTEM_PROMPT instructs LLM to generate functions that accept price data as arguments (list or pd.Series)
+- [ ] **DATA-02**: SYSTEM_PROMPT instructs LLM not to call yfinance/akshare inside generated tool functions
+- [ ] **DATA-03**: Generated tools return typed results matching expected output formats (float for numeric, dict for structured, bool for boolean)
+
+### Regression Guard
+
+- [ ] **REGR-01**: All 13 currently-passing benchmark tasks still pass after fixes
+- [ ] **REGR-02**: Security block rate remains 100%
+
+## v2 Requirements
+
+### Refiner Intelligence
+
+- **REFNR-05**: Refiner detects when the same error repeats across attempts and tries a fundamentally different approach
+- **REFNR-06**: Refiner validates that patched tool name matches the requested task (prevents calc_rsi registered for MACD task)
+
+### Tool Quality
+
+- **QUAL-01**: Generated tools include input validation (type checks, range checks)
+- **QUAL-02**: Generated tools include proper error messages when validation fails
+
+## Out of Scope
+
+| Feature | Reason |
+|---------|--------|
+| Batch merger implementation | Phase 1b feature, not needed for 80% target |
+| TA-Lib installation | Removed from allowlist instead — pandas/numpy sufficient |
+| New benchmark tasks | Fix existing failures first |
+| Eval runner redesign | Current runner works, just tools fail |
+| UI/API layer | CLI-only system |
+
+## Traceability
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| PROMPT-01 | — | Pending |
+| PROMPT-02 | — | Pending |
+| PROMPT-03 | — | Pending |
+| PROMPT-04 | — | Pending |
+| REFNR-01 | — | Pending |
+| REFNR-02 | — | Pending |
+| REFNR-03 | — | Pending |
+| REFNR-04 | — | Pending |
+| MOCK-01 | — | Pending |
+| MOCK-02 | — | Pending |
+| DATA-01 | — | Pending |
+| DATA-02 | — | Pending |
+| DATA-03 | — | Pending |
+| REGR-01 | — | Pending |
+| REGR-02 | — | Pending |
+
+**Coverage:**
+- v1 requirements: 15 total
+- Mapped to phases: 0
+- Unmapped: 15
+
+---
+*Requirements defined: 2026-01-31*
+*Last updated: 2026-01-31 after initial definition*
