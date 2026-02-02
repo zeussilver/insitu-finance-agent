@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-31)
 
 **Core value:** Benchmark task success rate >= 80%
-**Current focus:** Phase 3 Plan 01 complete. Ready for Plan 02.
+**Current focus:** Phase 3 complete. Ready for Phase 4 (Evaluation).
 
 ## Current Position
 
-Phase: 3 of 4 (Refiner Pipeline Repair)
-Plan: 1 of 2 in current phase
-Status: Plan 03-01 complete, ready for 03-02
-Last activity: 2026-02-02 - Completed 03-01-PLAN.md
+Phase: 3 of 4 (Refiner Pipeline Repair) - COMPLETE
+Plan: 2 of 2 in current phase
+Status: Phase 3 complete, ready for Phase 4
+Last activity: 2026-02-02 - Completed 03-02-PLAN.md
 
-Progress: [█████░░░░░] 57%
+Progress: [██████░░░░] 71%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
-- Average duration: 2m 3s
-- Total execution time: ~0.14 hours
+- Total plans completed: 5
+- Average duration: 2m 6s
+- Total execution time: ~0.18 hours
 
 **By Phase:**
 
@@ -29,11 +29,11 @@ Progress: [█████░░░░░] 57%
 |-------|-------|-------|----------|
 | 01-allowlist-cleanup | 2/2 | 4m 27s | 2m 14s |
 | 02-prompt-engineering | 1/1 | 1m 49s | 1m 49s |
-| 03-refiner-pipeline | 1/2 | 1m 44s | 1m 44s |
+| 03-refiner-pipeline | 2/2 | 4m 44s | 2m 22s |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (2m 22s), 01-02 (2m 5s), 02-01 (1m 49s), 03-01 (1m 44s)
-- Trend: Improving (~1m 50s per plan)
+- Last 5 plans: 01-02 (2m 5s), 02-01 (1m 49s), 03-01 (1m 44s), 03-02 (3m)
+- Trend: Stable (~2m per plan)
 
 *Updated after each plan completion*
 
@@ -55,6 +55,10 @@ Recent decisions affecting current work:
 - [02-01]: Removed pathlib from allowed imports (not needed for pure calculation tools)
 - [03-01]: Prioritize text_response over thought_trace in analyze_error() for more actionable error analysis
 - [03-01]: Truncate text_response at 2000 chars to prevent prompt bloat in repair loop
+- [03-02]: MODULE_REPLACEMENT_GUIDE at module level for reuse across methods
+- [03-02]: UNFIXABLE_ERRORS includes security violations and external failures
+- [03-02]: Exponential backoff starts at 1s (2^0) after first failure
+- [03-02]: Patch history tracks both approach and failure_reason for context
 
 ### Pending Todos
 
@@ -67,8 +71,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-02T09:55:08Z
-Stopped at: Completed 03-01-PLAN.md
+Last session: 2026-02-02T10:03:00Z
+Stopped at: Completed 03-02-PLAN.md (Phase 3 complete)
 Resume file: None
 
 ## Phase 3 Plans
@@ -76,4 +80,12 @@ Resume file: None
 | Plan | Wave | Files | Status |
 |------|------|-------|--------|
 | 03-01 | 1 | llm_adapter.py, refiner.py | Complete (text_response, error patterns) |
-| 03-02 | 2 | refiner.py | Pending (patch prompt, backoff, history) |
+| 03-02 | 2 | refiner.py | Complete (module guide, backoff, history, fail-fast) |
+
+## Phase 3 Completed Enhancements
+
+**refiner.py now includes:**
+- MODULE_REPLACEMENT_GUIDE: pandas/numpy examples for RSI, MACD, Bollinger
+- UNFIXABLE_ERRORS: 7 patterns for fail-fast (security, timeout, API)
+- generate_patch(): attempt/previous_patches params, module guidance, "do not modify tests"
+- refine(): exponential backoff (1s, 2s, 4s), fail-fast check, patch history tracking
