@@ -27,6 +27,39 @@ from src.core.models import (
 from src.evolution.synthesizer import extract_function_name, extract_args_schema
 
 
+# Module replacement guide for common talib replacements
+MODULE_REPLACEMENT_GUIDE = """
+## Module Replacement Guide (USE THESE)
+FORBIDDEN: talib, yfinance, akshare, requests, os, sys, subprocess
+USE INSTEAD: pandas, numpy for all calculations
+
+### RSI (replace talib.RSI)
+```python
+delta = prices.diff()
+gain = delta.clip(lower=0).rolling(period).mean()
+loss = (-delta.clip(upper=0)).rolling(period).mean()
+rs = gain / loss.replace(0, np.inf)
+rsi = 100 - (100 / (1 + rs))
+```
+
+### MACD (replace talib.MACD)
+```python
+ema_fast = prices.ewm(span=fast, adjust=False).mean()
+ema_slow = prices.ewm(span=slow, adjust=False).mean()
+macd_line = ema_fast - ema_slow
+signal = macd_line.ewm(span=signal_period, adjust=False).mean()
+```
+
+### Bollinger Bands (replace talib.BBANDS)
+```python
+middle = prices.rolling(period).mean()
+std = prices.rolling(period).std()
+upper = middle + (num_std * std)
+lower = middle - (num_std * std)
+```
+"""
+
+
 class Refiner:
     """Tool refiner: Error Analysis → Patch → Register"""
 
