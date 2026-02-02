@@ -43,11 +43,10 @@ Plans:
   2. Generated tools use only pandas/numpy for technical indicator calculations (no `import talib`, no `import yfinance` inside the tool)
   3. Generated tools return typed results: float for numeric indicators, dict for structured output, bool for boolean checks
   4. The `if __name__ == '__main__'` test block in generated tools uses inline sample data (not API calls)
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 02-01: Enhance SYSTEM_PROMPT with data pattern and calculation instructions
-- [ ] 02-02: Add return type guidance and verify generated tool patterns
+- [ ] 02-01-PLAN.md — Enhance SYSTEM_PROMPT with pure function pattern (data-as-arguments, pandas/numpy-only, return types, inline test data)
 
 ### Phase 3: Refiner Pipeline Repair
 **Goal**: When a generated tool fails verification, the refiner correctly analyzes the error and produces a working patch
@@ -85,7 +84,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Allowlist Cleanup & Fallback Fix | 2/2 | Complete ✓ | 2026-02-02 |
-| 2. Prompt Engineering for Correct Tool Generation | 0/2 | Not started | - |
+| 1. Allowlist Cleanup & Fallback Fix | 2/2 | Complete | 2026-02-02 |
+| 2. Prompt Engineering for Correct Tool Generation | 0/1 | Not started | - |
 | 3. Refiner Pipeline Repair | 0/2 | Not started | - |
 | 4. Regression Verification | 0/1 | Not started | - |
