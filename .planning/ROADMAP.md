@@ -12,7 +12,7 @@ This sprint fixes 4 root causes preventing the benchmark from reaching 80% task 
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Allowlist Cleanup & Fallback Fix** - Remove talib from the system and stop mock fallback on timeout
+- [x] **Phase 1: Allowlist Cleanup & Fallback Fix** - Remove talib from the system and stop mock fallback on timeout
 - [ ] **Phase 2: Prompt Engineering for Correct Tool Generation** - Guide LLM to produce self-contained tools with correct data patterns
 - [ ] **Phase 3: Refiner Pipeline Repair** - Fix error analysis and patch generation so the repair loop works
 - [ ] **Phase 4: Regression Verification** - Confirm all fixes work together without breaking existing passes
@@ -31,8 +31,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 2 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Remove talib from ALLOWED_MODULES and SYSTEM_PROMPT
-- [ ] 01-02-PLAN.md — Fix mock LLM fallback to only activate without API key
+- [x] 01-01-PLAN.md — Remove talib from ALLOWED_MODULES and SYSTEM_PROMPT
+- [x] 01-02-PLAN.md — Fix mock LLM fallback to only activate without API key
 
 ### Phase 2: Prompt Engineering for Correct Tool Generation
 **Goal**: The LLM generates self-contained financial tools that accept data as arguments, use only pandas/numpy for calculations, and return correctly typed results
@@ -85,7 +85,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Allowlist Cleanup & Fallback Fix | 0/2 | Planned | - |
+| 1. Allowlist Cleanup & Fallback Fix | 2/2 | Complete ✓ | 2026-02-02 |
 | 2. Prompt Engineering for Correct Tool Generation | 0/2 | Not started | - |
 | 3. Refiner Pipeline Repair | 0/2 | Not started | - |
 | 4. Regression Verification | 0/1 | Not started | - |

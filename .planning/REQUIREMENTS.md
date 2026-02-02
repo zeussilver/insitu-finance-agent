@@ -7,8 +7,8 @@
 
 ### LLM Prompt & Allowlist
 
-- [ ] **PROMPT-01**: Remove `talib` from SYSTEM_PROMPT allowed imports list in `llm_adapter.py`
-- [ ] **PROMPT-02**: Remove `talib` from ALLOWED_MODULES in `executor.py`
+- [x] **PROMPT-01**: Remove `talib` from SYSTEM_PROMPT allowed imports list in `llm_adapter.py`
+- [x] **PROMPT-02**: Remove `talib` from ALLOWED_MODULES in `executor.py`
 - [ ] **PROMPT-03**: Add explicit instruction in SYSTEM_PROMPT to implement technical indicators using pandas/numpy only (no external indicator libraries)
 - [ ] **PROMPT-04**: Add instruction in SYSTEM_PROMPT to accept price data as function arguments rather than fetching internally
 
@@ -21,8 +21,8 @@
 
 ### Mock LLM Fallback
 
-- [ ] **MOCK-01**: On LLM timeout, return error result instead of falling back to mock
-- [ ] **MOCK-02**: Mock LLM only activates when no API key is configured (not on timeout)
+- [x] **MOCK-01**: On LLM timeout, return error result instead of falling back to mock
+- [x] **MOCK-02**: Mock LLM only activates when no API key is configured (not on timeout)
 
 ### Tool Data Patterns
 
@@ -61,16 +61,16 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PROMPT-01 | Phase 1 | Pending |
-| PROMPT-02 | Phase 1 | Pending |
+| PROMPT-01 | Phase 1 | Complete |
+| PROMPT-02 | Phase 1 | Complete |
 | PROMPT-03 | Phase 2 | Pending |
 | PROMPT-04 | Phase 2 | Pending |
 | REFNR-01 | Phase 3 | Pending |
 | REFNR-02 | Phase 3 | Pending |
 | REFNR-03 | Phase 3 | Pending |
 | REFNR-04 | Phase 3 | Pending |
-| MOCK-01 | Phase 1 | Pending |
-| MOCK-02 | Phase 1 | Pending |
+| MOCK-01 | Phase 1 | Complete |
+| MOCK-02 | Phase 1 | Complete |
 | DATA-01 | Phase 2 | Pending |
 | DATA-02 | Phase 2 | Pending |
 | DATA-03 | Phase 2 | Pending |
