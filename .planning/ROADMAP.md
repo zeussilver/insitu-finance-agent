@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Allowlist Cleanup & Fallback Fix** - Remove talib from the system and stop mock fallback on timeout
 - [x] **Phase 2: Prompt Engineering for Correct Tool Generation** - Guide LLM to produce self-contained tools with correct data patterns
-- [ ] **Phase 3: Refiner Pipeline Repair** - Fix error analysis and patch generation so the repair loop works
+- [x] **Phase 3: Refiner Pipeline Repair** - Fix error analysis and patch generation so the repair loop works
 - [ ] **Phase 4: Regression Verification** - Confirm all fixes work together without breaking existing passes
 
 ## Phase Details
@@ -57,11 +57,11 @@ Plans:
   2. Refiner's `analyze_error()` extracts root cause from `text_response` (not just `thought_trace`) when analyzing errors
   3. Errors of type `ModuleNotFoundError`, `ImportError`, and `AssertionError` are correctly classified (not "UnknownError")
   4. Refiner's patch prompt explicitly instructs the LLM to avoid talib and use pandas/numpy only
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 03-01: Fix generate_tool_code return value and error analysis extraction
-- [ ] 03-02: Add missing error patterns and talib-avoidance instruction to patch prompt
+- [x] 03-01-PLAN.md — Fix generate_tool_code return value and error analysis extraction
+- [x] 03-02-PLAN.md — Add missing error patterns and talib-avoidance instruction to patch prompt
 
 ### Phase 4: Regression Verification
 **Goal**: The complete fix set achieves >=80% benchmark success rate without breaking any currently-passing tasks
@@ -86,5 +86,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 |-------|----------------|--------|-----------|
 | 1. Allowlist Cleanup & Fallback Fix | 2/2 | Complete | 2026-02-02 |
 | 2. Prompt Engineering for Correct Tool Generation | 1/1 | Complete | 2026-02-02 |
-| 3. Refiner Pipeline Repair | 0/2 | Not started | - |
+| 3. Refiner Pipeline Repair | 2/2 | Complete | 2026-02-02 |
 | 4. Regression Verification | 0/1 | Not started | - |
