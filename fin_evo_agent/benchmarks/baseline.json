@@ -1,0 +1,12 @@
+{
+    "version": "2026-02-02",
+    "description": "Baseline from run1_v2.csv - 13 passing tasks before Phase 3 fixes",
+    "passing_tasks": [
+        "fetch_001", "fetch_002", "fetch_003", "fetch_004",
+        "fetch_005", "fetch_006", "fetch_007", "fetch_008",
+        "calc_002", "calc_007",
+        "comp_001", "comp_003", "comp_004"
+    ],
+    "total_tasks": 20,
+    "target_pass_rate": 0.80
+}
