@@ -9,8 +9,8 @@
 
 - [x] **PROMPT-01**: Remove `talib` from SYSTEM_PROMPT allowed imports list in `llm_adapter.py`
 - [x] **PROMPT-02**: Remove `talib` from ALLOWED_MODULES in `executor.py`
-- [ ] **PROMPT-03**: Add explicit instruction in SYSTEM_PROMPT to implement technical indicators using pandas/numpy only (no external indicator libraries)
-- [ ] **PROMPT-04**: Add instruction in SYSTEM_PROMPT to accept price data as function arguments rather than fetching internally
+- [x] **PROMPT-03**: Add explicit instruction in SYSTEM_PROMPT to implement technical indicators using pandas/numpy only (no external indicator libraries)
+- [x] **PROMPT-04**: Add instruction in SYSTEM_PROMPT to accept price data as function arguments rather than fetching internally
 
 ### Refiner Pipeline
 
@@ -26,9 +26,9 @@
 
 ### Tool Data Patterns
 
-- [ ] **DATA-01**: SYSTEM_PROMPT instructs LLM to generate functions that accept price data as arguments (list or pd.Series)
-- [ ] **DATA-02**: SYSTEM_PROMPT instructs LLM not to call yfinance/akshare inside generated tool functions
-- [ ] **DATA-03**: Generated tools return typed results matching expected output formats (float for numeric, dict for structured, bool for boolean)
+- [x] **DATA-01**: SYSTEM_PROMPT instructs LLM to generate functions that accept price data as arguments (list or pd.Series)
+- [x] **DATA-02**: SYSTEM_PROMPT instructs LLM not to call yfinance/akshare inside generated tool functions
+- [x] **DATA-03**: Generated tools return typed results matching expected output formats (float for numeric, dict for structured, bool for boolean)
 
 ### Regression Guard
 
@@ -63,17 +63,17 @@
 |-------------|-------|--------|
 | PROMPT-01 | Phase 1 | Complete |
 | PROMPT-02 | Phase 1 | Complete |
-| PROMPT-03 | Phase 2 | Pending |
-| PROMPT-04 | Phase 2 | Pending |
+| PROMPT-03 | Phase 2 | Complete |
+| PROMPT-04 | Phase 2 | Complete |
 | REFNR-01 | Phase 3 | Pending |
 | REFNR-02 | Phase 3 | Pending |
 | REFNR-03 | Phase 3 | Pending |
 | REFNR-04 | Phase 3 | Pending |
 | MOCK-01 | Phase 1 | Complete |
 | MOCK-02 | Phase 1 | Complete |
-| DATA-01 | Phase 2 | Pending |
-| DATA-02 | Phase 2 | Pending |
-| DATA-03 | Phase 2 | Pending |
+| DATA-01 | Phase 2 | Complete |
+| DATA-02 | Phase 2 | Complete |
+| DATA-03 | Phase 2 | Complete |
 | REGR-01 | Phase 4 | Pending |
 | REGR-02 | Phase 4 | Pending |
 
@@ -84,4 +84,4 @@
 
 ---
 *Requirements defined: 2026-01-31*
-*Last updated: 2026-01-31 after roadmap creation*
+*Last updated: 2026-02-02 after Phase 2 completion*

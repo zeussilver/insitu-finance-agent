@@ -13,7 +13,7 @@ This sprint fixes 4 root causes preventing the benchmark from reaching 80% task 
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Allowlist Cleanup & Fallback Fix** - Remove talib from the system and stop mock fallback on timeout
-- [ ] **Phase 2: Prompt Engineering for Correct Tool Generation** - Guide LLM to produce self-contained tools with correct data patterns
+- [x] **Phase 2: Prompt Engineering for Correct Tool Generation** - Guide LLM to produce self-contained tools with correct data patterns
 - [ ] **Phase 3: Refiner Pipeline Repair** - Fix error analysis and patch generation so the repair loop works
 - [ ] **Phase 4: Regression Verification** - Confirm all fixes work together without breaking existing passes
 
@@ -46,7 +46,7 @@ Plans:
 **Plans**: 1 plan
 
 Plans:
-- [ ] 02-01-PLAN.md — Enhance SYSTEM_PROMPT with pure function pattern (data-as-arguments, pandas/numpy-only, return types, inline test data)
+- [x] 02-01-PLAN.md — Enhance SYSTEM_PROMPT with pure function pattern (data-as-arguments, pandas/numpy-only, return types, inline test data)
 
 ### Phase 3: Refiner Pipeline Repair
 **Goal**: When a generated tool fails verification, the refiner correctly analyzes the error and produces a working patch
@@ -85,6 +85,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Allowlist Cleanup & Fallback Fix | 2/2 | Complete | 2026-02-02 |
-| 2. Prompt Engineering for Correct Tool Generation | 0/1 | Not started | - |
+| 2. Prompt Engineering for Correct Tool Generation | 1/1 | Complete | 2026-02-02 |
 | 3. Refiner Pipeline Repair | 0/2 | Not started | - |
 | 4. Regression Verification | 0/1 | Not started | - |
