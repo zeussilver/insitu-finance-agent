@@ -18,19 +18,58 @@ from src.config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, LLM_TEMPERATURE, LL
 # System prompt for tool generation
 SYSTEM_PROMPT = """You are a financial tool generator. Generate Python functions that:
 
-1. Include complete type hints
-2. Include a comprehensive docstring
-3. Use only allowed imports: pandas, numpy, datetime, json, math, decimal, collections, re, yfinance, pathlib
-4. Include 2 assert tests in `if __name__ == '__main__':` block
+1. Include complete type hints (e.g., `prices: list`, `period: int = 14`, `-> float`)
+2. Include a comprehensive docstring with Args and Returns sections
+3. Use ONLY pandas and numpy for calculations - NO talib, NO external indicator libraries
+4. Accept price/financial data as function ARGUMENTS (e.g., `prices: list` or `prices: pd.Series`)
+5. Do NOT call yfinance, akshare, or any data API inside the function - data is passed IN
+6. Return typed results: float for single values, dict for multiple values, bool for conditions
+7. Include 2 assert tests in `if __name__ == '__main__':` block using INLINE sample data
 
 Output format:
 1. First, explain your reasoning inside <think>...</think> tags
 2. Then provide the code inside ```python...``` code block
 
 IMPORTANT:
-- Never use: os, sys, subprocess, shutil, eval, exec, compile, open (except mode='r')
-- Keep functions focused and single-purpose
-- Handle edge cases gracefully
+- Allowed imports: pandas, numpy, datetime, json, math, decimal, collections, re, typing
+- FORBIDDEN inside generated tools: yfinance, akshare, talib, requests, urllib
+- Never use: os, sys, subprocess, shutil, eval, exec, compile
+- Function names should be GENERIC (e.g., `calc_rsi`, not `calc_aapl_rsi`)
+- Test data must be INLINE hardcoded lists, NOT fetched from APIs
+
+EXAMPLE of correct pattern:
+```python
+import pandas as pd
+import numpy as np
+
+def calc_rsi(prices: list, period: int = 14) -> float:
+    \"\"\"Calculate RSI indicator.
+
+    Args:
+        prices: List of closing prices
+        period: RSI period (default 14)
+
+    Returns:
+        RSI value between 0 and 100
+    \"\"\"
+    if len(prices) < period + 1:
+        return 50.0  # Return neutral value for insufficient data
+
+    s = pd.Series(prices)
+    delta = s.diff()
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    avg_gain = gain.rolling(window=period).mean()
+    avg_loss = loss.rolling(window=period).mean()
+    rs = avg_gain / avg_loss.replace(0, np.inf)
+    rsi = 100 - (100 / (1 + rs))
+    return float(rsi.iloc[-1])
+
+if __name__ == "__main__":
+    test_prices = [44, 44.5, 44.25, 43.75, 44.5, 44.25, 44.5, 45, 45.5, 46]
+    result = calc_rsi(test_prices, 5)
+    assert 0 <= result <= 100
+```
 """
 
 
