@@ -130,7 +130,18 @@ class Refiner:
 只输出分析结果，不要输出代码。"""
 
         result = self.llm.generate_tool_code(analysis_prompt)
-        root_cause = result.get("thought_trace") or result.get("text_response") or f"{error_type}: {strategy}"
+
+        # Extract text_response (LLM explanation) and thought_trace (internal reasoning)
+        text_response = result.get("text_response", "")
+        thought_trace = result.get("thought_trace", "")
+
+        # Truncate to reasonable length to keep prompts manageable
+        MAX_TEXT_LEN = 2000
+        if len(text_response) > MAX_TEXT_LEN:
+            text_response = text_response[:MAX_TEXT_LEN//2] + "\n...[truncated]...\n" + text_response[-MAX_TEXT_LEN//2:]
+
+        # Priority: text_response (explanation) > thought_trace (reasoning) > default
+        root_cause = text_response or thought_trace or f"{error_type}: {strategy}"
 
         # Create ErrorReport
         error_report = ErrorReport(
