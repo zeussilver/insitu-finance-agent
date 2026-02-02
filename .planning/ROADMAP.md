@@ -72,10 +72,11 @@ Plans:
   2. All 13 currently-passing tasks (8 fetch + 5 calc/composite) still pass
   3. Running `python benchmarks/run_eval.py --security-only` produces 100% security block rate
   4. At least 3 of the 7 previously-failing tasks now pass (minimum improvement to reach 80%)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 04-01: Run full benchmark and verify targets
+- [ ] 04-01-PLAN.md — Enhance run_eval.py with JSON output, colors, baseline comparison, registry clearing
+- [ ] 04-02-PLAN.md — Run full benchmark verification and confirm targets
 
 ## Progress
 
@@ -87,4 +88,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 | 1. Allowlist Cleanup & Fallback Fix | 2/2 | Complete | 2026-02-02 |
 | 2. Prompt Engineering for Correct Tool Generation | 1/1 | Complete | 2026-02-02 |
 | 3. Refiner Pipeline Repair | 2/2 | Complete | 2026-02-02 |
-| 4. Regression Verification | 0/1 | Not started | - |
+| 4. Regression Verification | 0/2 | Not started | - |
