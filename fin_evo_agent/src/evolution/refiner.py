@@ -207,7 +207,9 @@ class Refiner:
         self,
         error_report: ErrorReport,
         original_code: str,
-        task: str
+        task: str,
+        attempt: int = 1,
+        previous_patches: Optional[List[dict]] = None
     ) -> Optional[str]:
         """
         Generate patched code based on error analysis.
@@ -216,10 +218,26 @@ class Refiner:
             error_report: Error analysis from analyze_error()
             original_code: Original code that failed
             task: Original task description
+            attempt: Current attempt number (1-3)
+            previous_patches: List of previous patch attempts with failure reasons
 
         Returns:
             Patched code or None if generation failed
         """
+        # Build history section for retries
+        history_section = ""
+        if previous_patches and attempt > 1:
+            history_section = "\n## Previous Attempts (DO NOT REPEAT THESE APPROACHES)\n"
+            for i, patch in enumerate(previous_patches, 1):
+                history_section += f"\n### Attempt {i} - FAILED\n"
+                history_section += f"What was tried: {patch.get('approach', 'Unknown')}\n"
+                history_section += f"Why it failed: {patch.get('failure_reason', 'Unknown')}\n"
+
+        # Module guidance for import errors
+        module_guidance = ""
+        if error_report.error_type in ("ModuleNotFoundError", "ImportError"):
+            module_guidance = MODULE_REPLACEMENT_GUIDE
+
         patch_prompt = f"""修复以下Python代码中的错误。
 
 ## 原始任务
@@ -233,12 +251,16 @@ class Refiner:
 ## 错误分析
 错误类型: {error_report.error_type}
 根本原因: {error_report.root_cause}
+{module_guidance}
+{history_section}
 
-## 要求
-1. 修复错误，保持原有功能
-2. 添加必要的边界检查和错误处理
-3. 保留原有的类型注解和文档字符串
-4. 在 if __name__ == '__main__' 块中保留测试用例
+## 修复要求
+1. 首先简要说明你将要修改什么以及为什么
+2. 修复错误，保持原有功能
+3. 只使用 pandas 和 numpy 进行计算 (不要使用 talib 或其他外部库)
+4. 保留原有的类型注解和文档字符串
+5. 保留 if __name__ == '__main__' 中的测试用例
+6. 重要：不要修改测试断言 - 测试定义了期望行为，修复应使代码通过原始测试
 
 只输出修复后的完整代码，用 ```python ``` 包裹。"""
 
