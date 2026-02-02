@@ -5,33 +5,33 @@
 See: .planning/PROJECT.md (updated 2026-01-31)
 
 **Core value:** Benchmark task success rate >= 80%
-**Current focus:** Phase 1 - Allowlist Cleanup & Fallback Fix
+**Current focus:** Phase 1 complete. Ready for Phase 2 - Prompt Engineering for Correct Tool Generation
 
 ## Current Position
 
-Phase: 1 of 4 (Allowlist Cleanup & Fallback Fix)
-Plan: 1 of 2 in current phase
-Status: In progress
-Last activity: 2026-02-02 - Completed 01-01-PLAN.md (remove talib from allowlists)
+Phase: 1 of 4 (Allowlist Cleanup & Fallback Fix) -- COMPLETE
+Plan: 2 of 2 in current phase
+Status: Phase complete
+Last activity: 2026-02-02 - Completed 01-02-PLAN.md (fix mock LLM fallback)
 
-Progress: [█░░░░░░░░░] 10%
+Progress: [██░░░░░░░░] 29%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1
-- Average duration: 2m 22s
-- Total execution time: ~0.04 hours
+- Total plans completed: 2
+- Average duration: 2m 14s
+- Total execution time: ~0.07 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01-allowlist-cleanup | 1/2 | 2m 22s | 2m 22s |
+| 01-allowlist-cleanup | 2/2 | 4m 27s | 2m 14s |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (2m 22s)
-- Trend: N/A (first plan)
+- Last 5 plans: 01-01 (2m 22s), 01-02 (2m 5s)
+- Trend: Stable (~2m per plan)
 
 *Updated after each plan completion*
 
@@ -46,10 +46,12 @@ Recent decisions affecting current work:
 - [Init]: Fix mock LLM to fail on timeout instead of producing wrong tools
 - [Init]: Guide LLM to use pandas/numpy only for technical indicators
 - [01-01]: talib was already absent from executor.py ALLOWED_MODULES; only SYSTEM_PROMPT in llm_adapter.py needed editing
+- [01-02]: API errors return error dict (code_payload=None, text_response with error msg) instead of falling back to mock
+- [01-02]: Mock only activates when API_KEY env var is unset, not on API errors/timeouts
 
 ### Pending Todos
 
-None yet.
+None.
 
 ### Blockers/Concerns
 
@@ -58,6 +60,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-02-02
-Stopped at: Completed 01-01-PLAN.md (remove talib from allowlists)
+Last session: 2026-02-02T06:57:13Z
+Stopped at: Completed 01-02-PLAN.md (fix mock LLM fallback). Phase 1 fully complete.
 Resume file: None
