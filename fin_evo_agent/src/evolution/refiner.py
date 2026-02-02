@@ -59,6 +59,17 @@ lower = middle - (num_std * std)
 ```
 """
 
+# Errors that should not be retried (fail fast)
+UNFIXABLE_ERRORS = {
+    "SecurityException",      # AST blocked code
+    "Unallowed import",       # Security violation
+    "Unallowed call",         # Security violation
+    "Unallowed attribute",    # Security violation
+    "TimeoutError",           # External timeout
+    "ConnectionError",        # Network failures
+    "LLM API Error",          # LLM service failures
+}
+
 
 class Refiner:
     """Tool refiner: Error Analysis → Patch → Register"""
