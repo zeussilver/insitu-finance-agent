@@ -276,7 +276,7 @@ class Refiner:
         max_attempts: int = 3
     ) -> Tuple[Optional[ToolArtifact], List[ErrorReport]]:
         """
-        Full refinement loop with retry.
+        Full refinement loop with retry, backoff, and history tracking.
 
         Args:
             code: Failed code to refine
@@ -291,10 +291,24 @@ class Refiner:
         print(f"[Refiner] Starting refinement (max {max_attempts} attempts)")
 
         error_reports = []
+        patch_history = []
         current_code = code
         current_trace = trace
 
         for attempt in range(max_attempts):
+            # Check for unfixable errors first (fail-fast)
+            stderr = current_trace.std_err or ""
+            for unfixable in UNFIXABLE_ERRORS:
+                if unfixable in stderr:
+                    print(f"[Refiner] Unfixable error detected: {unfixable} - aborting")
+                    return None, error_reports
+
+            # Exponential backoff: 1s, 2s, 4s (skip on first attempt)
+            if attempt > 0:
+                delay = 2 ** (attempt - 1)  # 1, 2, 4 seconds
+                print(f"[Refiner] Waiting {delay}s before attempt {attempt + 1}...")
+                time.sleep(delay)
+
             print(f"\n[Refiner] Attempt {attempt + 1}/{max_attempts}")
 
             # 1. Analyze error
@@ -304,12 +318,22 @@ class Refiner:
             print(f"  > Error type: {error_report.error_type}")
             print(f"  > Root cause: {error_report.root_cause[:100]}...")
 
-            # 2. Generate patch
+            # 2. Generate patch with history
             print("[Refiner] Generating patch...")
-            patched_code = self.generate_patch(error_report, current_code, task)
+            patched_code = self.generate_patch(
+                error_report,
+                current_code,
+                task,
+                attempt=attempt + 1,
+                previous_patches=patch_history if patch_history else None
+            )
 
             if not patched_code:
                 print("  > Patch generation failed")
+                patch_history.append({
+                    "approach": "LLM failed to generate code",
+                    "failure_reason": "No code payload returned"
+                })
                 continue
 
             # 3. Verify patch
@@ -325,6 +349,10 @@ class Refiner:
                 func_name = extract_function_name(patched_code)
                 if not func_name:
                     print("  > Could not extract function name")
+                    patch_history.append({
+                        "approach": "Patch generated but function name extraction failed",
+                        "failure_reason": "No function definition found in patched code"
+                    })
                     continue
 
                 tool = self.registry.register(
@@ -350,7 +378,15 @@ class Refiner:
                 return tool, error_reports
 
             else:
-                print(f"  > Patch verification failed: {verify_trace.std_err[:100]}...")
+                failure_snippet = verify_trace.std_err[:200] if verify_trace.std_err else "Unknown error"
+                print(f"  > Patch verification failed: {failure_snippet[:100]}...")
+
+                # Track this failed attempt
+                patch_history.append({
+                    "approach": f"Fixed {error_report.error_type}: {error_report.root_cause[:100]}",
+                    "failure_reason": failure_snippet
+                })
+
                 current_code = patched_code
                 current_trace = verify_trace
 
