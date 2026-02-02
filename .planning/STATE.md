@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-31)
 
 **Core value:** Benchmark task success rate >= 80%
-**Current focus:** Phase 3 complete. Ready for Phase 4 (Evaluation).
+**Current focus:** Phase 4 in progress. Evaluation infrastructure ready.
 
 ## Current Position
 
-Phase: 3 of 4 (Refiner Pipeline Repair) - COMPLETE
-Plan: 2 of 2 in current phase
-Status: Phase 3 complete, ready for Phase 4
-Last activity: 2026-02-02 - Completed 03-02-PLAN.md
+Phase: 4 of 4 (Regression Verification)
+Plan: 1 of 2 in current phase
+Status: In progress
+Last activity: 2026-02-02 - Completed 04-01-PLAN.md
 
-Progress: [██████░░░░] 71%
+Progress: [████████░░] 86%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5
-- Average duration: 2m 6s
-- Total execution time: ~0.18 hours
+- Total plans completed: 6
+- Average duration: 2m 19s
+- Total execution time: ~0.23 hours
 
 **By Phase:**
 
@@ -30,10 +30,11 @@ Progress: [██████░░░░] 71%
 | 01-allowlist-cleanup | 2/2 | 4m 27s | 2m 14s |
 | 02-prompt-engineering | 1/1 | 1m 49s | 1m 49s |
 | 03-refiner-pipeline | 2/2 | 4m 44s | 2m 22s |
+| 04-regression-verification | 1/2 | 3m 20s | 3m 20s |
 
 **Recent Trend:**
-- Last 5 plans: 01-02 (2m 5s), 02-01 (1m 49s), 03-01 (1m 44s), 03-02 (3m)
-- Trend: Stable (~2m per plan)
+- Last 5 plans: 02-01 (1m 49s), 03-01 (1m 44s), 03-02 (3m), 04-01 (3m 20s)
+- Trend: Stable (~2-3m per plan)
 
 *Updated after each plan completion*
 
@@ -59,6 +60,9 @@ Recent decisions affecting current work:
 - [03-02]: UNFIXABLE_ERRORS includes security violations and external failures
 - [03-02]: Exponential backoff starts at 1s (2^0) after first failure
 - [03-02]: Patch history tracks both approach and failure_reason for context
+- [04-01]: Use raw ANSI codes for colors (no colorama dependency)
+- [04-01]: Three-state result classification (pass/fail/error) to distinguish API errors
+- [04-01]: Static baseline.json file with 13 task IDs for regression detection
 
 ### Pending Todos
 
@@ -71,21 +75,30 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-02T10:03:00Z
-Stopped at: Completed 03-02-PLAN.md (Phase 3 complete)
+Last session: 2026-02-02T11:14:00Z
+Stopped at: Completed 04-01-PLAN.md
 Resume file: None
 
-## Phase 3 Plans
+## Phase 4 Plans
 
 | Plan | Wave | Files | Status |
 |------|------|-------|--------|
-| 03-01 | 1 | llm_adapter.py, refiner.py | Complete (text_response, error patterns) |
-| 03-02 | 2 | refiner.py | Complete (module guide, backoff, history, fail-fast) |
+| 04-01 | 1 | baseline.json, run_eval.py | Complete (JSON output, colors, baseline, interrupt) |
+| 04-02 | 2 | (verification run) | Pending |
 
-## Phase 3 Completed Enhancements
+## Phase 4 Completed Enhancements
 
-**refiner.py now includes:**
-- MODULE_REPLACEMENT_GUIDE: pandas/numpy examples for RSI, MACD, Bollinger
-- UNFIXABLE_ERRORS: 7 patterns for fail-fast (security, timeout, API)
-- generate_patch(): attempt/previous_patches params, module guidance, "do not modify tests"
-- refine(): exponential backoff (1s, 2s, 4s), fail-fast check, patch history tracking
+**run_eval.py now includes:**
+- Colors class: ANSI escape codes for GREEN, RED, YELLOW, CYAN, BOLD
+- ResultState class: Three-state classification (pass, fail, error)
+- Baseline loading: Loads baseline.json for regression detection
+- clear_registry(): Deletes all tools for fresh generation test
+- save_results_json(): Saves detailed JSON to benchmarks/results/
+- detect_regressions(): Compares against baseline passing tasks
+- print_summary(): Colored summary with per-category breakdown
+- SIGINT handler: Graceful Ctrl+C with partial result save
+- --clear-registry flag: CLI option for fresh generation test
+
+**baseline.json contains:**
+- 13 previously-passing task IDs (8 fetch + 2 calc + 3 composite)
+- Target pass rate: 0.80 (80%)
