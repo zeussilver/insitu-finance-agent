@@ -181,6 +181,7 @@ class LLMAdapter:
         return {
             "thought_trace": parsed["thought_trace"],
             "code_payload": parsed["code_payload"],
+            "text_response": parsed["text_response"],
             "raw_response": raw_response
         }
 
