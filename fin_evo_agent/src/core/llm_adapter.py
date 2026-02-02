@@ -114,7 +114,7 @@ class LLMAdapter:
             user_prompt += f"\n\nPrevious Error:\n{error_context}\n\nFix the issue."
 
         if self.client is None:
-            # Fallback to mock response if no API key
+            # Mock only when no API key configured (testing mode)
             raw_response = self._mock_generate(task)
         else:
             try:
@@ -129,8 +129,14 @@ class LLMAdapter:
                 )
                 raw_response = completion.choices[0].message.content
             except Exception as e:
-                print(f"[LLM Error] {e}, falling back to mock")
-                raw_response = self._mock_generate(task)
+                # API error or timeout - return error result, don't mask with mock
+                print(f"[LLM Error] {e}")
+                return {
+                    "thought_trace": "",
+                    "code_payload": None,
+                    "text_response": f"LLM API Error: {e}",
+                    "raw_response": f"LLM API Error: {e}"
+                }
 
         parsed = self._clean_protocol(raw_response)
         return {
