@@ -1,0 +1,13 @@
+# Core dependencies (locked versions for reproducibility)
+sqlmodel==0.0.14
+sqlalchemy>=2.0.0
+pandas>=2.0.0
+numpy>=1.24.0
+yfinance>=0.2.30
+pyarrow>=14.0.0
+
+# LLM SDK (OpenAI-compatible for Qwen3)
+openai>=1.0.0
+
+# Utilities
+tabulate

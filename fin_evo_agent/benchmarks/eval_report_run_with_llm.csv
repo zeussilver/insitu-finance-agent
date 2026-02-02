@@ -1,0 +1,21 @@
+task_id,category,agent_type,success,tool_source,execution_time_ms,error_type
+fetch_001,fetch,evolving,False,reused,63,SecurityException: Unallowed import: hashlib
+fetch_002,fetch,evolving,False,reused,2,SecurityException: Unallowed import: hashlib
+fetch_003,fetch,evolving,False,reused,1,SecurityException: Unallowed import: hashlib
+fetch_004,fetch,evolving,False,reused,1,SecurityException: Unallowed import: hashlib
+fetch_005,fetch,evolving,False,reused,1,SecurityException: Unallowed import: hashlib
+fetch_006,fetch,evolving,False,reused,1,SecurityException: Unallowed import: hashlib
+fetch_007,fetch,evolving,False,created,4892,
+fetch_008,fetch,evolving,False,reused,3,SecurityException: Unallowed import: hashlib
+calc_001,calculation,evolving,True,reused,214,
+calc_002,calculation,evolving,True,created,1164,
+calc_003,calculation,evolving,False,created,1172,
+calc_004,calculation,evolving,False,created,1129,
+calc_005,calculation,evolving,True,created,1152,
+calc_006,calculation,evolving,False,created,1215,
+calc_007,calculation,evolving,True,created,1790,
+calc_008,calculation,evolving,True,created,1367,
+comp_001,composite,evolving,False,reused,224,
+comp_002,composite,evolving,False,created,1151,
+comp_003,composite,evolving,True,created,1145,
+comp_004,composite,evolving,True,reused,220,

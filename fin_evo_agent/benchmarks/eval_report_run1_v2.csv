@@ -1,0 +1,21 @@
+task_id,category,agent_type,success,tool_source,execution_time_ms,error_type
+fetch_001,fetch,evolving,True,reused,406,
+fetch_002,fetch,evolving,True,created,21915,
+fetch_003,fetch,evolving,True,reused,1851,
+fetch_004,fetch,evolving,True,reused,1650,
+fetch_005,fetch,evolving,True,reused,1751,
+fetch_006,fetch,evolving,True,reused,1838,
+fetch_007,fetch,evolving,True,reused,1887,
+fetch_008,fetch,evolving,True,reused,1668,
+calc_001,calculation,evolving,False,failed,156917,SynthesisFailed
+calc_002,calculation,evolving,True,created,123788,
+calc_003,calculation,evolving,False,failed,145412,SynthesisFailed
+calc_004,calculation,evolving,False,created,335245,
+calc_005,calculation,evolving,False,created,25954,"HTTP Error 404: {""quoteSummary"":{""result"":null,""error"":{""code"":""Not Found"",""description"":""Quote not "
+calc_006,calculation,evolving,False,failed,183865,SynthesisFailed
+calc_007,calculation,evolving,True,reused,2007,
+calc_008,calculation,evolving,False,created,32307,
+comp_001,composite,evolving,True,reused,208,
+comp_002,composite,evolving,False,created,24664,
+comp_003,composite,evolving,True,created,28450,
+comp_004,composite,evolving,True,reused,206,

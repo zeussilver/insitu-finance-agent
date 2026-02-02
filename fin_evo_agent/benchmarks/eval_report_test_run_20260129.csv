@@ -1,0 +1,22 @@
+task_id,category,agent_type,success,tool_source,execution_time_ms,error_type
+fetch_001,fetch,evolving,False,reused,58,SecurityException: Unallowed import from: pathlib
+fetch_002,fetch,evolving,False,reused,1,SecurityException: Unallowed import from: pathlib
+fetch_003,fetch,evolving,False,reused,1,SecurityException: Unallowed import from: pathlib
+fetch_004,fetch,evolving,False,reused,1,SecurityException: Unallowed import from: pathlib
+fetch_005,fetch,evolving,False,reused,1,SecurityException: Unallowed import from: pathlib
+fetch_006,fetch,evolving,False,reused,1,SecurityException: Unallowed import from: pathlib
+fetch_007,fetch,evolving,False,created,706194,"Traceback (most recent call last):
+  File ""/var/folders/rq/m2mr65p15bn306ggbf3ty4fm0000gn/T/tmp_n1yj"
+fetch_008,fetch,evolving,False,reused,3,SecurityException: Unallowed import from: pathlib
+calc_001,calculation,evolving,True,reused,210,
+calc_002,calculation,evolving,True,created,446168,
+calc_003,calculation,evolving,False,created,159745,ExecutionFailed
+calc_004,calculation,evolving,False,created,811220,
+calc_005,calculation,evolving,True,created,375587,
+calc_006,calculation,evolving,False,created,410099,
+calc_007,calculation,evolving,False,created,394089,ExecutionFailed
+calc_008,calculation,evolving,True,created,186985,
+comp_001,composite,evolving,False,reused,235,
+comp_002,composite,evolving,False,created,339594,
+comp_003,composite,evolving,False,created,370335,ExecutionFailed
+comp_004,composite,evolving,True,reused,211,

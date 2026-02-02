@@ -1,0 +1,32 @@
+task_id,category,agent_type,success,tool_source,execution_time_ms,error_type
+fetch_001,fetch,evolving,False,reused,3027,"Traceback (most recent call last):
+  File ""/var/folders/rq/m2mr65p15bn306ggbf3ty4fm0000gn/T/tmpatvow"
+fetch_002,fetch,evolving,False,created,15035,
+fetch_003,fetch,evolving,False,reused,353,"Traceback (most recent call last):
+  File ""/var/folders/rq/m2mr65p15bn306ggbf3ty4fm0000gn/T/tmp530p1"
+fetch_004,fetch,evolving,False,reused,1834,"Traceback (most recent call last):
+  File ""/var/folders/rq/m2mr65p15bn306ggbf3ty4fm0000gn/T/tmp3px_7"
+fetch_005,fetch,evolving,False,reused,1892,"Traceback (most recent call last):
+  File ""/var/folders/rq/m2mr65p15bn306ggbf3ty4fm0000gn/T/tmp_h2_p"
+fetch_006,fetch,evolving,False,reused,354,"Traceback (most recent call last):
+  File ""/var/folders/rq/m2mr65p15bn306ggbf3ty4fm0000gn/T/tmpe4a9j"
+fetch_007,fetch,evolving,False,reused,1618,"Traceback (most recent call last):
+  File ""/var/folders/rq/m2mr65p15bn306ggbf3ty4fm0000gn/T/tmp7xxda"
+fetch_008,fetch,evolving,False,reused,363,"Traceback (most recent call last):
+  File ""/var/folders/rq/m2mr65p15bn306ggbf3ty4fm0000gn/T/tmp4clwp"
+calc_001,calculation,evolving,False,reused,215,
+calc_002,calculation,evolving,False,created,20503,
+calc_003,calculation,evolving,False,failed,199437,SynthesisFailed
+calc_004,calculation,evolving,False,created,31322,
+calc_005,calculation,evolving,False,created,70003,"HTTP Error 404: {""quoteSummary"":{""result"":null,""error"":{""code"":""Not Found"",""description"":""Quote not "
+calc_006,calculation,evolving,False,created,33579,"Traceback (most recent call last):
+  File ""/var/folders/rq/m2mr65p15bn306ggbf3ty4fm0000gn/T/tmp_0etv"
+calc_007,calculation,evolving,False,reused,2239,
+calc_008,calculation,evolving,False,created,32917,
+comp_001,composite,evolving,False,reused,216,
+comp_002,composite,evolving,False,created,24966,"
+[*********************100%***********************]  1 of 1 completed
+
+[*********************100%***"
+comp_003,composite,evolving,True,created,29396,
+comp_004,composite,evolving,False,reused,226,

@@ -1,0 +1,16 @@
+# Environment variables (API keys)
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Data files
+data/cache/
+data/db/
+
+# IDE
+.idea/
+.vscode/
+*.swp
