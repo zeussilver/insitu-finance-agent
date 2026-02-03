@@ -36,6 +36,15 @@ class Permission(str, Enum):
     FILE_WRITE = "file_write"      # Allow cache writes (restricted)
 
 
+class VerificationStage(int, Enum):
+    """Multi-stage verification pipeline stages."""
+    NONE = 0           # Not verified yet
+    AST_SECURITY = 1   # Passed AST security check
+    SELF_TEST = 2      # Passed built-in tests
+    CONTRACT_VALID = 3 # Passed contract validation
+    INTEGRATION = 4    # Passed integration test (real data)
+
+
 # --- Table 1: ToolArtifact ---
 
 class ToolArtifact(SQLModel, table=True):
@@ -69,6 +78,14 @@ class ToolArtifact(SQLModel, table=True):
         description="Data type: 'price', 'financial', 'volume', 'ohlcv'")
     input_requirements: List[str] = Field(default=[], sa_column=Column(JSON),
         description="Required input fields: ['prices', 'period'], ['symbol', 'start', 'end']")
+
+    # --- Capability-based verification (Architecture Overhaul) ---
+    capabilities: List[str] = Field(default=[], sa_column=Column(JSON),
+        description="Tool capabilities: ['calculate', 'fetch', 'network_read', etc.]")
+    contract_id: Optional[str] = Field(default=None,
+        description="Contract ID for validation: 'calc_rsi', 'fetch_price', etc.")
+    verification_stage: int = Field(default=0,
+        description="Highest verification stage passed (0=none, 1=ast, 2=self_test, 3=contract, 4=integration)")
 
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -168,6 +185,10 @@ def _migrate_tool_artifacts(engine):
         ('indicator', 'TEXT'),
         ('data_type', 'TEXT'),
         ('input_requirements', 'TEXT DEFAULT "[]"'),  # JSON stored as TEXT
+        # Architecture overhaul fields
+        ('capabilities', 'TEXT DEFAULT "[]"'),  # JSON stored as TEXT
+        ('contract_id', 'TEXT'),
+        ('verification_stage', 'INTEGER DEFAULT 0'),
     ]
 
     with engine.connect() as conn:

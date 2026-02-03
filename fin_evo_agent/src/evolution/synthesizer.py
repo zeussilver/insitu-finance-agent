@@ -2,21 +2,25 @@
 
 The core evolution loop:
 1. Call LLM to generate tool code from task description
-2. Perform AST security check
-3. Execute built-in tests in sandbox
-4. If passed, register to database and disk
-5. If failed, call Refiner for error repair
+2. Multi-stage verification (AST, self-test, contract, integration)
+3. If passed all stages, register to database and disk
+4. If failed, call Refiner for error repair
+
+Architecture Overhaul: Uses MultiStageVerifier for capability-based verification.
 """
 
 import re
-from typing import Tuple, Optional
+from typing import Tuple, Optional, List
 
 import sys
 sys.path.insert(0, str(__file__).rsplit("/", 3)[0])
 from src.core.llm_adapter import LLMAdapter
 from src.core.executor import ToolExecutor
 from src.core.registry import ToolRegistry
-from src.core.models import ToolArtifact, ExecutionTrace, Permission
+from src.core.models import ToolArtifact, ExecutionTrace, Permission, VerificationStage
+from src.core.verifier import MultiStageVerifier, VerificationReport
+from src.core.contracts import get_contract, infer_contract_from_query, ToolContract
+from src.core.capabilities import get_category_capabilities, ToolCapability
 
 
 def extract_function_name(code: str) -> Optional[str]:
@@ -93,45 +97,62 @@ def extract_args_schema(code: str) -> dict:
 
 
 class Synthesizer:
-    """Tool synthesizer: Generate → Verify → Register"""
+    """Tool synthesizer: Generate → Verify → Register
+
+    Uses MultiStageVerifier for capability-based, contract-validated verification.
+    """
 
     def __init__(
         self,
         llm: LLMAdapter = None,
         executor: ToolExecutor = None,
-        registry: ToolRegistry = None
+        registry: ToolRegistry = None,
+        verifier: MultiStageVerifier = None
     ):
         self.llm = llm or LLMAdapter()
         self.executor = executor or ToolExecutor()
         self.registry = registry or ToolRegistry()
+        self.verifier = verifier or MultiStageVerifier(self.executor, self.registry)
 
     def synthesize(
         self,
         task: str,
-        tool_name: Optional[str] = None
+        tool_name: Optional[str] = None,
+        category: Optional[str] = None,
+        contract: Optional[ToolContract] = None
     ) -> Tuple[Optional[ToolArtifact], ExecutionTrace]:
         """
         Synthesize a tool from task description.
 
         Flow:
-        1. Call LLM to generate code
-        2. AST security check
-        3. Execute built-in tests (if __name__ == '__main__')
-        4. Register if passed
+        1. Call LLM to generate code (with category-specific prompt)
+        2. Multi-stage verification (AST, self-test, contract, integration)
+        3. Register if all stages pass
 
         Args:
             task: Task description (e.g., "计算 RSI 指标")
             tool_name: Optional tool name (extracted from code if not provided)
+            category: Tool category ('fetch', 'calculation', 'composite')
+            contract: Optional contract for output validation
 
         Returns:
             (tool, trace) - tool is None if synthesis failed
         """
-        # 1. Generate code using LLM
+        # Infer category if not provided
+        if not category:
+            category = self._infer_category(task)
+
+        # Try to get contract if not provided
+        if not contract:
+            contract = infer_contract_from_query(task, category)
+
+        # 1. Generate code using LLM with category-specific prompt
         print(f"[Synthesizer] Generating code for: {task}")
+        print(f"[Synthesizer] Category: {category}")
         task_prompt = task
         if tool_name:
             task_prompt += f"\n\nPlease name the function: {tool_name}"
-        result = self.llm.generate_tool_code(task_prompt)
+        result = self.llm.generate_tool_code(task_prompt, category=category)
 
         if not result["code_payload"]:
             # Failed to generate code
@@ -153,7 +174,7 @@ class Synthesizer:
         if result["thought_trace"]:
             print(f"[Thinking] {result['thought_trace'][:100]}...")
 
-        # 2. Extract function name and schema (always use actual name from code)
+        # 2. Extract function name and schema
         func_name = extract_function_name(code) or tool_name
         if not func_name:
             trace = ExecutionTrace(
@@ -171,25 +192,26 @@ class Synthesizer:
         args_schema = extract_args_schema(code)
         print(f"[Synthesizer] Extracted function: {func_name}")
 
-        # 3. Verify code by running self-tests
-        print("[Synthesizer] Verifying code...")
-        trace = self.executor.execute(code, "verify_only", {}, task[:50])
+        # 3. Multi-stage verification
+        print("[Synthesizer] Running multi-stage verification...")
+        passed, report = self.verifier.verify_all_stages(
+            code=code,
+            category=category,
+            task_id=task[:50],
+            contract=contract
+        )
 
-        if trace.exit_code != 0:
-            print(f"[Synthesizer] Verification failed: {trace.std_err}")
+        # Create trace from verification report
+        trace = self._create_trace_from_report(task, report)
+
+        if not passed:
+            print(f"[Synthesizer] Verification failed at stage: {report.final_stage.name}")
+            for stage in report.stages:
+                if stage.result.value == 'fail':
+                    print(f"  - {stage.stage.name}: {stage.message}")
             return None, trace
 
-        # Check for verification pass marker
-        verification_result = self.executor.extract_result(trace)
-        if verification_result != "VERIFY_PASS" and "passed" not in (trace.std_out or "").lower():
-            # Tests didn't pass explicitly, but might have run without errors
-            if trace.exit_code == 0:
-                print("[Synthesizer] Verification completed (implicit pass)")
-            else:
-                print(f"[Synthesizer] Verification unclear: {trace.std_out}")
-                return None, trace
-
-        print("[Synthesizer] Verification passed!")
+        print(f"[Synthesizer] Verification passed! Final stage: {report.final_stage.name}")
 
         # 4. Register the tool
         print("[Synthesizer] Registering tool...")
@@ -198,14 +220,14 @@ class Synthesizer:
         indicator = extract_indicator(task, code)
         data_type = extract_data_type(task, args_schema)
 
-        # Infer category from task keywords
-        task_lower = task.lower()
-        if any(kw in task_lower for kw in ['获取', 'fetch', 'get', '查询', '历史']):
-            category = 'fetch'
-        elif any(kw in task_lower for kw in ['计算', 'calc', 'calculate', '指标']):
-            category = 'calculation'
+        # Get capabilities for this category
+        capabilities = [cap.value for cap in get_category_capabilities(category)]
+
+        # Determine permissions based on category
+        if category == 'fetch':
+            permissions = [Permission.NETWORK_READ.value, Permission.CALC_ONLY.value]
         else:
-            category = 'composite'
+            permissions = [Permission.CALC_ONLY.value]
 
         # Get input requirements from args_schema
         input_requirements = list(args_schema.keys()) if args_schema else []
@@ -214,7 +236,7 @@ class Synthesizer:
             name=func_name,
             code=code,
             args_schema=args_schema,
-            permissions=[Permission.CALC_ONLY.value]
+            permissions=permissions
         )
 
         # Update schema fields after registration
@@ -226,10 +248,75 @@ class Synthesizer:
                 data_type=data_type,
                 input_requirements=input_requirements
             )
+            # Update capability and verification fields
+            self._update_tool_verification_fields(
+                tool.id,
+                capabilities=capabilities,
+                contract_id=contract.contract_id if contract else None,
+                verification_stage=report.final_stage.value
+            )
 
         print(f"[Synthesizer] Tool registered: {tool.name} v{tool.semantic_version} (ID: {tool.id})")
         print(f"[Synthesizer] Schema: category={category}, indicator={indicator}, data_type={data_type}")
+        print(f"[Synthesizer] Capabilities: {capabilities}")
         return tool, trace
+
+    def _infer_category(self, task: str) -> str:
+        """Infer tool category from task description."""
+        task_lower = task.lower()
+        if any(kw in task_lower for kw in ['获取', 'fetch', 'get', '查询', '历史', 'price', 'quote']):
+            # Check if it's actually a calculation task that mentions data
+            if any(kw in task_lower for kw in ['calculate', 'calc', '计算', 'rsi', 'macd', 'bollinger', 'volatility', 'correlation']):
+                return 'calculation'
+            return 'fetch'
+        elif any(kw in task_lower for kw in ['if ', 'return true', 'return false', 'signal', 'divergence', 'portfolio', 'after']):
+            return 'composite'
+        else:
+            return 'calculation'
+
+    def _create_trace_from_report(
+        self,
+        task: str,
+        report: VerificationReport
+    ) -> ExecutionTrace:
+        """Create ExecutionTrace from VerificationReport."""
+        # Collect error info from failed stages
+        errors = []
+        for stage in report.stages:
+            if stage.result.value == 'fail':
+                errors.append(f"{stage.stage.name}: {stage.message}")
+
+        return ExecutionTrace(
+            trace_id=f"verify_{report.tool_name}",
+            task_id=task[:50],
+            input_args={"task": task, "category": report.category},
+            output_repr=f"final_stage={report.final_stage.name}",
+            exit_code=0 if report.passed else 1,
+            std_out=str(report.to_dict()),
+            std_err="; ".join(errors) if errors else "",
+            execution_time_ms=0
+        )
+
+    def _update_tool_verification_fields(
+        self,
+        tool_id: int,
+        capabilities: List[str],
+        contract_id: Optional[str],
+        verification_stage: int
+    ):
+        """Update tool with verification-related fields."""
+        from sqlmodel import Session
+        from src.core.models import get_engine, ToolArtifact
+
+        engine = get_engine()
+        with Session(engine) as session:
+            tool = session.get(ToolArtifact, tool_id)
+            if tool:
+                tool.capabilities = capabilities
+                tool.contract_id = contract_id
+                tool.verification_stage = verification_stage
+                session.add(tool)
+                session.commit()
 
     def synthesize_with_retry(
         self,
@@ -291,7 +378,9 @@ class Synthesizer:
         self,
         task: str,
         tool_name: Optional[str] = None,
-        use_refiner: bool = True
+        use_refiner: bool = True,
+        category: Optional[str] = None,
+        contract: Optional[ToolContract] = None
     ) -> Tuple[Optional[ToolArtifact], ExecutionTrace]:
         """
         Synthesize a tool with automatic refinement on failure.
@@ -300,12 +389,14 @@ class Synthesizer:
             task: Task description
             tool_name: Optional tool name
             use_refiner: Whether to use refiner on failure
+            category: Tool category ('fetch', 'calculation', 'composite')
+            contract: Optional contract for output validation
 
         Returns:
             (tool, trace) - tool is None if all attempts failed
         """
-        # First try normal synthesis
-        tool, trace = self.synthesize(task, tool_name)
+        # First try normal synthesis with category and contract
+        tool, trace = self.synthesize(task, tool_name, category=category, contract=contract)
 
         if tool:
             return tool, trace
@@ -317,7 +408,7 @@ class Synthesizer:
         from src.evolution.refiner import Refiner
 
         # Get the generated code from LLM (need to regenerate since synthesize doesn't return it on failure)
-        result = self.llm.generate_tool_code(task)
+        result = self.llm.generate_tool_code(task, category=category)
         code = result.get("code_payload")
 
         if not code:
@@ -333,6 +424,26 @@ class Synthesizer:
         )
 
         if refined_tool:
+            # Update schema fields for refined tool
+            if refined_tool:
+                if not category:
+                    category = self._infer_category(task)
+                self.registry.update_schema(
+                    refined_tool.id,
+                    category=category,
+                    indicator=extract_indicator(task, refined_tool.code_content),
+                    data_type=extract_data_type(task, extract_args_schema(refined_tool.code_content)),
+                    input_requirements=list(extract_args_schema(refined_tool.code_content).keys())
+                )
+                # Update verification fields
+                capabilities = [cap.value for cap in get_category_capabilities(category)]
+                self._update_tool_verification_fields(
+                    refined_tool.id,
+                    capabilities=capabilities,
+                    contract_id=contract.contract_id if contract else None,
+                    verification_stage=2  # Passed self-test via refiner
+                )
+
             # Create a success trace
             success_trace = ExecutionTrace(
                 trace_id=f"refined_{trace.trace_id}",
