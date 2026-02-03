@@ -38,8 +38,9 @@ SIMPLE_FETCH_PATTERNS = {
     ],
 }
 
-# Queries that require data NOT available in OHLCV
-UNSUPPORTED_FETCH_PATTERNS = [
+# Queries that require financial data (now supported via yfinance)
+# These are no longer blocked - fetch tools can now handle them
+FINANCIAL_FETCH_PATTERNS = [
     r'net\s+income',
     r'revenue',
     r'earnings',
@@ -112,6 +113,13 @@ class TaskExecutor:
                 self._bootstrap_cache[tool_name] = tool
         return self._bootstrap_cache.get(tool_name)
 
+    # Known US tickers (common stocks + ETFs) - class level for reuse
+    US_TICKERS = [
+        'AAPL', 'MSFT', 'GOOGL', 'GOOG', 'AMZN', 'TSLA', 'META', 'NVDA', 'AMD', 'INTC',
+        'SPY', 'QQQ', 'IWM', 'DIA', 'VOO', 'VTI', 'GLD', 'SLV', 'USO', 'XLF',
+        'NFLX', 'PYPL', 'CRM', 'ADBE', 'ORCL', 'IBM', 'CSCO', 'QCOM', 'TXN', 'AVGO'
+    ]
+
     def extract_symbol(self, query: str) -> str:
         """Extract stock symbol from query string.
 
@@ -129,12 +137,7 @@ class TaskExecutor:
                 return symbol
 
         # Step 2: Check known US tickers (common stocks + ETFs)
-        us_tickers = [
-            'AAPL', 'MSFT', 'GOOGL', 'GOOG', 'AMZN', 'TSLA', 'META', 'NVDA', 'AMD', 'INTC',
-            'SPY', 'QQQ', 'IWM', 'DIA', 'VOO', 'VTI', 'GLD', 'SLV', 'USO', 'XLF',
-            'NFLX', 'PYPL', 'CRM', 'ADBE', 'ORCL', 'IBM', 'CSCO', 'QCOM', 'TXN', 'AVGO'
-        ]
-        for ticker in us_tickers:
+        for ticker in self.US_TICKERS:
             if ticker in query_upper:
                 return ticker
 
@@ -150,6 +153,65 @@ class TaskExecutor:
 
         # Step 4: Default fallback
         return 'AAPL'
+
+    # Additional exclusions for multi-symbol extraction context
+    MULTI_SYMBOL_EXCLUSIONS = {
+        'EQUAL', 'WEIGHT', 'RETURN', 'OVER', 'LAST', 'DAYS', 'PRICE',
+        'CALCULATE', 'BETWEEN', 'PORTFOLIO', 'CORRELATION',
+    }
+
+    def extract_multiple_symbols(self, query: str) -> List[str]:
+        """Extract multiple stock symbols from query.
+
+        Used for multi-asset tasks like correlation and portfolio calculations.
+
+        Returns:
+            List of symbols found in the query. Falls back to single symbol extraction
+            if only one symbol is found.
+        """
+        symbols = []
+        query_upper = query.upper()
+
+        # Combine exclusion lists
+        all_exclusions = self.SYMBOL_EXCLUSIONS | self.MULTI_SYMBOL_EXCLUSIONS
+
+        # Step 1: Check index names FIRST (case-insensitive)
+        for index_name, symbol in self.INDEX_SYMBOL_MAPPING.items():
+            if index_name.upper() in query_upper and symbol not in symbols:
+                symbols.append(symbol)
+
+        # Step 2: Check known US tickers (common stocks + ETFs)
+        # Skip tickers that are substrings of already-found tickers (e.g., GOOG if GOOGL found)
+        for ticker in self.US_TICKERS:
+            if ticker in query_upper and ticker not in symbols:
+                # Check if this ticker is a substring of an already-found ticker
+                is_substring = any(
+                    ticker != existing and ticker in existing
+                    for existing in symbols
+                )
+                if not is_substring:
+                    symbols.append(ticker)
+
+        # Step 3: Regex pattern matching with exclusion filter
+        # Find all potential ticker patterns (2-5 uppercase letters)
+        # Skip this step for multi-symbol - known tickers should suffice
+        # (avoids false positives like 'EQUAL', 'GOOG' when GOOGL is present)
+
+        # Return found symbols, or fall back to single extraction
+        if len(symbols) >= 2:
+            return symbols
+        else:
+            return [self.extract_symbol(query)]
+
+    def is_multi_asset_task(self, query: str) -> bool:
+        """Detect if a task requires multiple assets.
+
+        Multi-asset tasks include:
+        - Correlation calculations (between two assets)
+        - Portfolio calculations (multiple assets)
+        """
+        query_lower = query.lower()
+        return 'correlation' in query_lower or 'portfolio' in query_lower
 
     def extract_date_range(self, query: str) -> Tuple[str, str]:
         """Extract date range from query, or return default."""
@@ -206,6 +268,55 @@ class TaskExecutor:
             # Return error indicator - don't silently fail
             raise RuntimeError(f"Failed to fetch data for {symbol}: {e}")
 
+    def _fetch_multi_asset_data(
+        self,
+        symbols: List[str],
+        start: str,
+        end: str,
+        query: str
+    ) -> Dict[str, Any]:
+        """
+        Fetch data for multiple symbols.
+
+        Returns a dict with:
+        - For correlation: prices1, prices2 (close prices for first two symbols)
+        - For portfolio: symbol names as keys (close prices) + 'symbols' list
+
+        Args:
+            symbols: List of stock symbols to fetch
+            start: Start date (YYYY-MM-DD)
+            end: End date (YYYY-MM-DD)
+            query: Original query string (to determine data format)
+        """
+        query_lower = query.lower()
+        all_data = {}
+
+        # Fetch data for each symbol
+        for i, sym in enumerate(symbols):
+            try:
+                sym_data = self.fetch_stock_data(sym, start, end)
+                close_prices = sym_data.get('close', [])
+
+                # For correlation: use prices1, prices2
+                if 'correlation' in query_lower:
+                    all_data[f'prices{i + 1}'] = close_prices
+
+                # For portfolio: use symbol name as key
+                if 'portfolio' in query_lower:
+                    # Clean symbol name (remove ^ for indices)
+                    clean_name = sym.replace('^', '')
+                    all_data[clean_name] = close_prices
+
+            except Exception as e:
+                print(f"[TaskExecutor] Warning: Failed to fetch {sym}: {e}")
+                # Continue with other symbols
+
+        # Add symbols list for portfolio tasks
+        if 'portfolio' in query_lower:
+            all_data['symbols'] = [s.replace('^', '') for s in symbols]
+
+        return all_data
+
     def prepare_calc_args(
         self,
         data: Dict[str, Any],
@@ -215,7 +326,43 @@ class TaskExecutor:
         Prepare arguments for a calc tool from fetched data and task params.
 
         Maps OHLCV data to common calc tool argument names.
+        Handles multi-asset data for correlation and portfolio tasks.
         """
+        query = task.get('query', '').lower()
+
+        # Check if it's a multi-asset task
+        if 'correlation' in query:
+            # Correlation needs prices1 and prices2
+            args = {
+                'prices1': data.get('prices1', []),
+                'prices2': data.get('prices2', []),
+            }
+            # Extract task-specific parameters
+            args.update(self._extract_task_params(task))
+            return args
+
+        elif 'portfolio' in query:
+            # Portfolio task - map symbol keys to numbered params
+            args = {}
+            price_index = 1
+            for key, value in data.items():
+                if isinstance(value, list) and key not in ('symbols', 'dates'):
+                    args[f'prices{price_index}'] = value  # Convert to prices1, prices2, prices3
+                    price_index += 1
+            # Extract task-specific parameters
+            args.update(self._extract_task_params(task))
+            return args
+
+        elif 'divergence' in query:
+            # Divergence task - map volume to volumes (plural)
+            args = {
+                'prices': data.get('close', []),
+                'volumes': data.get('volume', []),  # Map singular to plural
+            }
+            args.update(self._extract_task_params(task))
+            return args
+
+        # Standard single-asset case
         args = {
             # Primary price data (most calc tools use 'prices')
             'prices': data.get('close', []),
@@ -242,6 +389,16 @@ class TaskExecutor:
         query = task.get('query', '')
         params = {}
 
+        # Extract year from query (e.g., "2023", "2024")
+        year_match = re.search(r'\b(20\d{2})\b', query)
+        if year_match:
+            params['year'] = int(year_match.group(1))
+
+        # Extract quarter from query (e.g., "Q1", "Q2", "1st quarter")
+        quarter_match = re.search(r'Q(\d)|(\d)(?:st|nd|rd|th)?\s*quarter', query, re.IGNORECASE)
+        if quarter_match:
+            params['quarter'] = int(quarter_match.group(1) or quarter_match.group(2))
+
         # RSI period
         if match := re.search(r'RSI[- ]?(\d+)', query, re.I):
             params['period'] = int(match.group(1))
@@ -263,16 +420,17 @@ class TaskExecutor:
             params['k_period'] = 9
             params['d_period'] = 3
 
-        # Bollinger bands
-        if match := re.search(r'(\d+)\s*day', query.lower()):
-            params['window'] = int(match.group(1))
-        elif 'bollinger' in query.lower() or '\u5e03\u6797' in query:
-            params['window'] = 20
+        # Bollinger bands - only extract window if query mentions bollinger
+        if 'bollinger' in query.lower() or '布林' in query:
+            if match := re.search(r'(\d+)[-\s]*day', query.lower()):
+                params['window'] = int(match.group(1))
+            else:
+                params['window'] = 20
             params['num_std'] = 2
 
-        # Generic period/window
+        # Generic period/window (for divergence, volatility, and other tasks)
         if 'period' not in params and 'window' not in params:
-            if match := re.search(r'(\d+)\s*(\u5929|\u65e5|day|period)', query.lower()):
+            if match := re.search(r'(\d+)[-\s]*(天|日|day|period)', query.lower()):
                 params['period'] = int(match.group(1))
 
         return params
@@ -289,18 +447,16 @@ class TaskExecutor:
             - float: The requested value if query matches a simple pattern
             - None: If query doesn't match (should fall through to tool execution)
 
-        Raises:
-            ValueError: If query requires unsupported data (financial statements)
+        Note: Financial data queries (net income, revenue, etc.) are now supported
+        via yfinance fetch tools and will fall through to tool execution.
         """
         query_lower = query.lower()
 
-        # Check for unsupported queries first (require financial data)
-        for pattern in UNSUPPORTED_FETCH_PATTERNS:
+        # Financial queries now fall through to tool execution
+        # (Previously raised ValueError, but fetch tools can now handle them)
+        for pattern in FINANCIAL_FETCH_PATTERNS:
             if re.search(pattern, query_lower, re.IGNORECASE):
-                raise ValueError(
-                    "This query requires financial statement data which is not available. "
-                    "Only OHLCV (Open, High, Low, Close, Volume) data is supported."
-                )
+                return None  # Fall through to tool execution
 
         # Get close prices from data
         close_prices = data.get('close', [])
@@ -330,7 +486,7 @@ class TaskExecutor:
         Execute a task using the appropriate pattern.
 
         For fetch/calculation/composite categories:
-        1. Fetch data using bootstrap tools
+        1. Fetch data using bootstrap tools (single or multiple symbols)
         2. Try simple fetch handling (latest/highest/lowest close)
         3. If not simple, execute the tool with data
         """
@@ -341,38 +497,38 @@ class TaskExecutor:
         # Fetch data if needed
         if category in ('fetch', 'calculation', 'composite'):
             try:
-                symbol = self.extract_symbol(query)
                 start, end = self.extract_date_range(query)
 
-                data = self.fetch_stock_data(symbol, start, end)
+                # Check if it's a multi-asset task
+                if self.is_multi_asset_task(query):
+                    symbols = self.extract_multiple_symbols(query)
+                    data = self._fetch_multi_asset_data(symbols, start, end, query)
+                    symbol = ','.join(symbols)  # For trace logging
+                else:
+                    symbol = self.extract_symbol(query)
+                    symbols = [symbol]
+                    data = self.fetch_stock_data(symbol, start, end)
 
                 # Try simple fetch handling first (no tool execution needed)
-                try:
-                    simple_result = self._handle_simple_fetch(query, data)
-                    if simple_result is not None:
-                        # Return success trace with direct result
-                        return ExecutionTrace(
-                            trace_id=f"simple_fetch_{task_id}",
-                            task_id=task_id,
-                            input_args={'query': query, 'symbol': symbol},
-                            output_repr=str(simple_result),
-                            exit_code=0,
-                            std_out=str(simple_result),
-                            std_err="",
-                            execution_time_ms=0
-                        )
-                except ValueError as e:
-                    # Unsupported query (requires financial data)
-                    return ExecutionTrace(
-                        trace_id=f"unsupported_fetch_{task_id}",
-                        task_id=task_id,
-                        input_args={'query': query},
-                        output_repr="",
-                        exit_code=1,
-                        std_out="",
-                        std_err=str(e),
-                        execution_time_ms=0
-                    )
+                # Note: Simple fetch only works for single-asset queries
+                if not self.is_multi_asset_task(query):
+                    try:
+                        simple_result = self._handle_simple_fetch(query, data)
+                        if simple_result is not None:
+                            # Return success trace with direct result
+                            return ExecutionTrace(
+                                trace_id=f"simple_fetch_{task_id}",
+                                task_id=task_id,
+                                input_args={'query': query, 'symbol': symbol},
+                                output_repr=str(simple_result),
+                                exit_code=0,
+                                std_out=str(simple_result),
+                                std_err="",
+                                execution_time_ms=0
+                            )
+                    except Exception as e:
+                        # Error in simple fetch handling - fall through to tool execution
+                        print(f"[TaskExecutor] Simple fetch error: {e}")
 
                 args = self.prepare_calc_args(data, task)
             except Exception as e:
@@ -459,12 +615,58 @@ if __name__ == "__main__":
     assert task_executor._handle_simple_fetch("计算MACD", mock_data) is None
     print("Simple fetch handling: PASS")
 
-    # Test unsupported queries raise ValueError
-    try:
-        task_executor._handle_simple_fetch("Get AAPL 2023 Q1 net income", mock_data)
-        assert False, "Should have raised ValueError"
-    except ValueError as e:
-        assert "financial statement data" in str(e)
-    print("Unsupported query handling: PASS")
+    # Test financial queries now fall through (return None) instead of raising
+    result = task_executor._handle_simple_fetch("Get AAPL 2023 Q1 net income", mock_data)
+    assert result is None, "Financial queries should fall through to tool execution"
+    print("Financial query handling: PASS")
+
+    # Test multi-asset task detection
+    assert task_executor.is_multi_asset_task("Calculate correlation between S&P 500 and AAPL") == True
+    assert task_executor.is_multi_asset_task("Calculate portfolio return (AAPL,GOOGL,AMZN)") == True
+    assert task_executor.is_multi_asset_task("Calculate AAPL RSI-14") == False
+    print("Multi-asset task detection: PASS")
+
+    # Test multi-symbol extraction
+    symbols = task_executor.extract_multiple_symbols("Calculate correlation between S&P 500 and AAPL")
+    assert '^GSPC' in symbols, f"Should find S&P 500 as ^GSPC, got {symbols}"
+    assert 'AAPL' in symbols, f"Should find AAPL, got {symbols}"
+    assert len(symbols) >= 2, f"Should find at least 2 symbols, got {symbols}"
+    print(f"Multi-symbol extraction (correlation): PASS - {symbols}")
+
+    symbols = task_executor.extract_multiple_symbols("Calculate equal-weight portfolio return (AAPL,GOOGL,AMZN)")
+    assert 'AAPL' in symbols, f"Should find AAPL, got {symbols}"
+    assert 'GOOGL' in symbols, f"Should find GOOGL, got {symbols}"
+    assert 'AMZN' in symbols, f"Should find AMZN, got {symbols}"
+    assert len(symbols) == 3, f"Should find exactly 3 symbols, got {symbols}"
+    assert 'GOOG' not in symbols, f"Should NOT find GOOG (GOOGL is present), got {symbols}"
+    assert 'EQUAL' not in symbols, f"Should NOT find EQUAL (common word), got {symbols}"
+    print(f"Multi-symbol extraction (portfolio): PASS - {symbols}")
+
+    # Test prepare_calc_args for correlation
+    correlation_data = {
+        'prices1': [100.0, 101.0, 102.0],
+        'prices2': [50.0, 51.0, 52.0],
+    }
+    correlation_task = {'query': 'Calculate correlation between S&P 500 and AAPL'}
+    args = task_executor.prepare_calc_args(correlation_data, correlation_task)
+    assert 'prices1' in args, f"Should have prices1, got {args.keys()}"
+    assert 'prices2' in args, f"Should have prices2, got {args.keys()}"
+    print("Prepare args (correlation): PASS")
+
+    # Test prepare_calc_args for portfolio
+    portfolio_data = {
+        'AAPL': [100.0, 101.0, 102.0],
+        'GOOGL': [200.0, 202.0, 204.0],
+        'AMZN': [150.0, 151.0, 152.0],
+        'symbols': ['AAPL', 'GOOGL', 'AMZN'],
+    }
+    portfolio_task = {'query': 'Calculate equal-weight portfolio return (AAPL,GOOGL,AMZN)'}
+    args = task_executor.prepare_calc_args(portfolio_data, portfolio_task)
+    # Now maps symbol keys to numbered params (prices1, prices2, prices3)
+    assert 'prices1' in args, f"Should have prices1, got {args.keys()}"
+    assert 'prices2' in args, f"Should have prices2, got {args.keys()}"
+    assert 'prices3' in args, f"Should have prices3, got {args.keys()}"
+    assert 'symbols' not in args, f"Should NOT have symbols (excluded), got {args.keys()}"
+    print("Prepare args (portfolio): PASS")
 
     print("\nAll TaskExecutor tests passed!")
