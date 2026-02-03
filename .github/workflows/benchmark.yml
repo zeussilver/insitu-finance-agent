@@ -1,0 +1,159 @@
+# Benchmark Evaluation CI
+# ======================
+#
+# Setup:
+#   1. Go to repository Settings -> Secrets and variables -> Actions
+#   2. Add repository secret: API_KEY (your DashScope API key)
+#
+# Triggers:
+#   - Automatically on PRs to main branch
+#   - Manually via Actions tab -> "Run workflow"
+#
+# Behavior:
+#   - FAILS on regressions (baseline tasks now failing)
+#   - WARNS on pass rate < 80% (LLM variance expected)
+#   - Posts results as PR comment
+#   - Saves results as downloadable artifact
+#
+# Cache:
+#   - yfinance data cached for reproducibility
+#   - pip dependencies cached for speed
+
+name: Benchmark Evaluation
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      clear_registry:
+        description: 'Clear tool registry before run'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: fin_evo_agent/requirements.txt
+
+      - name: Install dependencies
+        working-directory: fin_evo_agent
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Restore yfinance cache
+        uses: actions/cache@v4
+        with:
+          path: fin_evo_agent/data/cache
+          key: yfinance-cache-${{ hashFiles('fin_evo_agent/benchmarks/tasks.jsonl') }}
+          restore-keys: |
+            yfinance-cache-
+
+      - name: Initialize database
+        working-directory: fin_evo_agent
+        run: python main.py --init
+
+      - name: Run benchmark evaluation
+        working-directory: fin_evo_agent
+        env:
+          API_KEY: ${{ secrets.API_KEY }}
+        run: |
+          # Build command based on inputs
+          CMD="python benchmarks/run_eval.py --agent evolving --run-id ci-${{ github.run_number }}"
+
+          if [[ "${{ github.event.inputs.clear_registry }}" == "true" ]]; then
+            CMD="$CMD --clear-registry"
+          fi
+
+          echo "Running: $CMD"
+          $CMD
+
+      - name: Check for regressions
+        id: check_results
+        working-directory: fin_evo_agent
+        run: |
+          python -c "
+          import json
+          import sys
+          import os
+
+          results_file = 'benchmarks/results/ci-${{ github.run_number }}.json'
+
+          try:
+              with open(results_file) as f:
+                  results = json.load(f)
+          except FileNotFoundError:
+              print('ERROR: Results file not found')
+              sys.exit(1)
+
+          summary = results.get('summary', {})
+          regressions = summary.get('regressions', [])
+          pass_rate = summary.get('pass_rate', 0)
+          passed = summary.get('passed', 0)
+          total = summary.get('total_tasks', 0)
+
+          # Write outputs for PR comment
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f'pass_rate={pass_rate:.2%}\n')
+              f.write(f'passed={passed}\n')
+              f.write(f'total={total}\n')
+              f.write(f'regression_count={len(regressions)}\n')
+
+          # Check for regressions (hard fail)
+          if regressions:
+              print(f'FAIL: {len(regressions)} regressions detected!')
+              for r in regressions:
+                  print(f\"  - {r['task_id']}: {r.get('failure_reason', 'unknown')[:50]}\")
+              sys.exit(1)
+
+          # Check pass rate (warning only)
+          if pass_rate < 0.80:
+              print(f'WARNING: Pass rate {pass_rate:.1%} below 80% target')
+              print('(Not failing - LLM variance expected)')
+          else:
+              print(f'OK: {pass_rate:.1%} pass rate, no regressions')
+          "
+
+      - name: Upload results artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-results-${{ github.run_number }}
+          path: |
+            fin_evo_agent/benchmarks/results/ci-${{ github.run_number }}.json
+            fin_evo_agent/data/logs/security_violations.log
+          retention-days: 30
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request' && always()
+        uses: thollander/actions-comment-pull-request@v2
+        with:
+          comment_tag: benchmark-results
+          message: |
+            ## Benchmark Results
+
+            | Metric | Value |
+            |--------|-------|
+            | Pass Rate | ${{ steps.check_results.outputs.pass_rate }} (${{ steps.check_results.outputs.passed }}/${{ steps.check_results.outputs.total }}) |
+            | Regressions | ${{ steps.check_results.outputs.regression_count }} |
+            | Target | >= 80% |
+
+            ${{ steps.check_results.outputs.regression_count != '0' && '**FAILED:** Regressions detected! Baseline tasks that were passing are now failing.' || (steps.check_results.outputs.pass_rate < '0.80' && '**WARNING:** Pass rate below target (LLM variance expected)' || '**PASSED:** All checks OK') }}
+
+            [Full results artifact](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+            ---
+            *Generated by Claude Code CI*
