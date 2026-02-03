@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-31)
 ## Current Position
 
 Phase: 5 of 5 (Verification Gap Closure)
-Plan: 4 of 6 complete in current phase (05-01, 05-02, 05-03, 05-04)
-Status: In progress - Wave 2 complete
-Last activity: 2026-02-03 - Completed 05-04-PLAN.md (TaskExecutor module)
+Plan: 5 of 6 complete in current phase (05-01, 05-02, 05-03, 05-04, 05-05)
+Status: In progress - Wave 3 in progress
+Last activity: 2026-02-03 - Completed 05-05-PLAN.md (Benchmark Integration)
 
-Progress: [█████████░] 90%
+Progress: [█████████░] 92%
 
 ## Phase 4 Verification Results
 
@@ -46,7 +46,7 @@ Progress: [█████████░] 90%
 | 02-prompt-engineering | 1/1 | 1m 49s | 1m 49s |
 | 03-refiner-pipeline | 2/2 | 4m 44s | 2m 22s |
 | 04-regression-verification | 2/2 | ~9m | ~4m 30s |
-| 05-verification-gap-closure | 4/6 | ~10m | ~2m 30s |
+| 05-verification-gap-closure | 5/6 | ~12m | ~2m 24s |
 
 *Updated after each plan completion*
 
@@ -86,6 +86,9 @@ Recent decisions affecting current work:
 - [05-04]: Use data_proxy.get_stock_hist directly (not via bootstrap tool artifact)
 - [05-04]: Default symbol AAPL, default date range 2023-01-01 to 2023-12-31
 - [05-04]: All OHLCV values converted to float for JSON serialization
+- [05-05]: Schema-based matching tried first, keyword-based as fallback
+- [05-05]: TaskExecutor handles all task categories uniformly
+- [05-05]: Preserved _infer_tool_name() for backwards compatibility
 
 ### Pending Todos
 
@@ -98,13 +101,13 @@ None.
 2. [DONE - 05-02] Schema fields added to ToolArtifact model
 3. [DONE - 05-03] Schema-based tool matching in registry and synthesizer
 4. [DONE - 05-04] TaskExecutor module for fetch + calc chaining
-5. [PENDING - 05-05] Benchmark integration
+5. [DONE - 05-05] Benchmark integration (EvalRunner + TaskExecutor + schema matching)
 6. [PENDING - 05-06] Final verification
 
 ## Session Continuity
 
-Last session: 2026-02-03T05:02:37Z
-Stopped at: Completed 05-04-PLAN.md (TaskExecutor module)
+Last session: 2026-02-03T05:06:56Z
+Stopped at: Completed 05-05-PLAN.md (Benchmark Integration)
 Resume file: None
 
 ## Phase 5 Plans
@@ -115,7 +118,7 @@ Resume file: None
 | 05-02 | 1 | models.py | Complete (2026-02-03) |
 | 05-03 | 2 | registry.py, synthesizer.py | Complete (2026-02-03) |
 | 05-04 | 2 | src/core/task_executor.py | Complete (2026-02-03) |
-| 05-05 | 3 | TBD | Pending |
+| 05-05 | 3 | benchmarks/run_eval.py | Complete (2026-02-03) |
 | 05-06 | 3 | TBD | Pending |
 
 ## Phase 5 Completed Enhancements
@@ -151,3 +154,11 @@ Resume file: None
 - extract_symbol() and extract_date_range() parse task queries
 - _extract_task_params() handles RSI, MACD, KDJ, Bollinger params
 - Pure calc tools receive data as arguments (not fetching internally)
+
+**05-05: Benchmark Integration (2026-02-03)**
+- Added TaskExecutor import and instance to EvalRunner
+- Added _extract_schema_from_task() supporting 10 indicator types
+- Schema-based matching tried first via find_by_schema()
+- Keyword-based matching preserved as fallback
+- Task execution uses task_executor.execute_task() for uniform flow
+- Smoke test verified: tool reuse and execution working
