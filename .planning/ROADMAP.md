@@ -97,21 +97,30 @@ Issues identified and documented for Phase 5.
   4. Pass rate >= 80% (16/20)
   5. Zero regressions on baseline tasks
   6. CI pipeline catches regressions automatically
-**Plans**: 6 plans
+**Plans**: 9 plans (6 original + 3 gap closure)
 
 Plans:
-- [ ] 05-01-PLAN.md — Expand AST security blocklists (block introspection chains, getattr, encoding bypasses)
-- [ ] 05-02-PLAN.md — Add schema fields to ToolArtifact model (category, indicator, data_type, input_requirements)
-- [ ] 05-03-PLAN.md — Implement schema-based tool matching in registry and synthesizer
-- [ ] 05-04-PLAN.md — Create TaskExecutor for bootstrap tool chaining (fetch + calc pattern)
-- [ ] 05-05-PLAN.md — Update run_eval.py to use TaskExecutor and schema matching
-- [ ] 05-06-PLAN.md — Create GitHub Actions CI workflow for regression testing
+- [x] 05-01-PLAN.md — Expand AST security blocklists (block introspection chains, getattr, encoding bypasses)
+- [x] 05-02-PLAN.md — Add schema fields to ToolArtifact model (category, indicator, data_type, input_requirements)
+- [x] 05-03-PLAN.md — Implement schema-based tool matching in registry and synthesizer
+- [x] 05-04-PLAN.md — Create TaskExecutor for bootstrap tool chaining (fetch + calc pattern)
+- [x] 05-05-PLAN.md — Update run_eval.py to use TaskExecutor and schema matching
+- [x] 05-06-PLAN.md — Create GitHub Actions CI workflow for regression testing
+- [ ] 05-07-PLAN.md — Fix extract_symbol() to not match "GET" as ticker symbol
+- [ ] 05-08-PLAN.md — Add simple fetch query handling directly from OHLCV data
+- [ ] 05-09-PLAN.md — Add security logging to eval and run verification benchmark
 
-**Issues to Address:**
+**Issues to Address (Original):**
 1. **Security**: LLM generates dangerous code that passes AST check (4/5 attacks bypass)
 2. **Fetch Pattern**: Pure function pattern conflicts with tasks that need to fetch data via yfinance
 3. **Tool Matching**: Keyword-based `_infer_tool_name()` matches wrong tools to similar-sounding tasks
 4. **CI**: No automated regression protection
+
+**Post-Verification Gaps (from 05-VERIFICATION.md):**
+1. **Symbol Extraction Bug**: extract_symbol() matches "GET" as ticker, causing fetch_004/005 regressions
+2. **Argument Mismatch**: Generated tools expect different arg formats than TaskExecutor provides
+3. **Security Logging**: Violations not logged during security-only evaluation
+4. **Pass Rate Regression**: Phase 5 made pass rate worse (55% vs 60% in Phase 4)
 
 ## Progress
 
@@ -124,4 +133,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 2. Prompt Engineering for Correct Tool Generation | 1/1 | Complete | 2026-02-02 |
 | 3. Refiner Pipeline Repair | 2/2 | Complete | 2026-02-02 |
 | 4. Regression Verification | 2/2 | Complete (Issues Found) | 2026-02-03 |
-| 5. Verification Gap Closure | 0/6 | Ready for execution | - |
+| 5. Verification Gap Closure | 6/9 | Gap Closure In Progress | - |
