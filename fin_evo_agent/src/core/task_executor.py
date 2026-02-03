@@ -277,6 +277,50 @@ class TaskExecutor:
 
         return params
 
+    def _handle_simple_fetch(
+        self,
+        query: str,
+        data: Dict[str, Any]
+    ) -> Optional[float]:
+        """
+        Handle simple fetch queries directly from OHLCV data.
+
+        Returns:
+            - float: The requested value if query matches a simple pattern
+            - None: If query doesn't match (should fall through to tool execution)
+
+        Raises:
+            ValueError: If query requires unsupported data (financial statements)
+        """
+        query_lower = query.lower()
+
+        # Check for unsupported queries first (require financial data)
+        for pattern in UNSUPPORTED_FETCH_PATTERNS:
+            if re.search(pattern, query_lower, re.IGNORECASE):
+                raise ValueError(
+                    "This query requires financial statement data which is not available. "
+                    "Only OHLCV (Open, High, Low, Close, Volume) data is supported."
+                )
+
+        # Get close prices from data
+        close_prices = data.get('close', [])
+        if not close_prices:
+            return None
+
+        # Check simple fetch patterns (order: highest, lowest, latest)
+        for pattern_type, patterns in SIMPLE_FETCH_PATTERNS.items():
+            for pattern in patterns:
+                if re.search(pattern, query_lower, re.IGNORECASE):
+                    if pattern_type == 'highest_close':
+                        return max(close_prices)
+                    elif pattern_type == 'lowest_close':
+                        return min(close_prices)
+                    elif pattern_type == 'latest_close':
+                        return close_prices[-1]
+
+        # No match - fall through to tool execution
+        return None
+
     def execute_task(
         self,
         task: Dict[str, Any],
@@ -287,19 +331,49 @@ class TaskExecutor:
 
         For fetch/calculation/composite categories:
         1. Fetch data using bootstrap tools
-        2. Prepare arguments
-        3. Execute the tool with data
+        2. Try simple fetch handling (latest/highest/lowest close)
+        3. If not simple, execute the tool with data
         """
         category = task.get('category', 'calculation')
         task_id = task.get('task_id', 'unknown')
+        query = task.get('query', '')
 
         # Fetch data if needed
         if category in ('fetch', 'calculation', 'composite'):
             try:
-                symbol = self.extract_symbol(task.get('query', ''))
-                start, end = self.extract_date_range(task.get('query', ''))
+                symbol = self.extract_symbol(query)
+                start, end = self.extract_date_range(query)
 
                 data = self.fetch_stock_data(symbol, start, end)
+
+                # Try simple fetch handling first (no tool execution needed)
+                try:
+                    simple_result = self._handle_simple_fetch(query, data)
+                    if simple_result is not None:
+                        # Return success trace with direct result
+                        return ExecutionTrace(
+                            trace_id=f"simple_fetch_{task_id}",
+                            task_id=task_id,
+                            input_args={'query': query, 'symbol': symbol},
+                            output_repr=str(simple_result),
+                            exit_code=0,
+                            std_out=str(simple_result),
+                            std_err="",
+                            execution_time_ms=0
+                        )
+                except ValueError as e:
+                    # Unsupported query (requires financial data)
+                    return ExecutionTrace(
+                        trace_id=f"unsupported_fetch_{task_id}",
+                        task_id=task_id,
+                        input_args={'query': query},
+                        output_repr="",
+                        exit_code=1,
+                        std_out="",
+                        std_err=str(e),
+                        execution_time_ms=0
+                    )
+
                 args = self.prepare_calc_args(data, task)
             except Exception as e:
                 # Return error trace for fetch failures
@@ -365,5 +439,32 @@ if __name__ == "__main__":
     params = task_executor._extract_task_params(task)
     assert params.get('period') == 14, f"Got {params}"
     print("Param extraction: PASS")
+
+    # Test simple fetch handling
+    mock_data = {'close': [100.0, 101.0, 102.0, 99.0, 105.0], 'symbol': 'AAPL'}
+
+    # Test English variants
+    assert task_executor._handle_simple_fetch("Get latest close price", mock_data) == 105.0
+    assert task_executor._handle_simple_fetch("Get AAPL close price", mock_data) == 105.0
+    assert task_executor._handle_simple_fetch("Get highest close price in last 30 days", mock_data) == 105.0
+    assert task_executor._handle_simple_fetch("Get lowest close price", mock_data) == 99.0
+
+    # Test Chinese variants
+    assert task_executor._handle_simple_fetch("获取收盘价", mock_data) == 105.0
+    assert task_executor._handle_simple_fetch("获取最高收盘价", mock_data) == 105.0
+    assert task_executor._handle_simple_fetch("获取最低收盘价", mock_data) == 99.0
+
+    # Test non-simple queries return None (fall through to tool execution)
+    assert task_executor._handle_simple_fetch("Calculate RSI", mock_data) is None
+    assert task_executor._handle_simple_fetch("计算MACD", mock_data) is None
+    print("Simple fetch handling: PASS")
+
+    # Test unsupported queries raise ValueError
+    try:
+        task_executor._handle_simple_fetch("Get AAPL 2023 Q1 net income", mock_data)
+        assert False, "Should have raised ValueError"
+    except ValueError as e:
+        assert "financial statement data" in str(e)
+    print("Unsupported query handling: PASS")
 
     print("\nAll TaskExecutor tests passed!")
