@@ -34,23 +34,63 @@ class ToolExecutor:
     BANNED_MODULES = {
         'os', 'sys', 'subprocess', 'shutil', 'builtins',
         'importlib', 'ctypes', 'socket', 'http', 'urllib',
-        'pickle', 'shelve', 'multiprocessing', 'threading'
+        'pickle', 'shelve', 'multiprocessing', 'threading',
+        # Additional dangerous modules
+        'pty', 'tty', 'fcntl', 'posix', 'nt', 'msvcrt',
+        'code', 'codeop', 'commands', 'popen2', 'signal'
     }
 
     # Function calls that are banned
     BANNED_CALLS = {
         'eval', 'exec', 'compile', '__import__',
         'globals', 'locals', 'vars', 'dir',
-        'getattr', 'setattr', 'delattr'
+        'getattr', 'setattr', 'delattr',
+        # Additional dangerous calls
+        'hasattr', 'open', 'file', 'input', 'raw_input',
+        'execfile', 'reload', 'breakpoint'
+    }
+
+    # Dangerous magic attributes for object introspection
+    BANNED_ATTRIBUTES = {
+        '__class__', '__bases__', '__subclasses__', '__mro__',
+        '__dict__', '__globals__', '__code__', '__builtins__',
+        '__getattribute__', '__setattr__', '__delattr__',
+        '__reduce__', '__reduce_ex__', '__getstate__', '__setstate__',
+        '__init_subclass__', '__class_getitem__',
+        'func_globals', 'func_code',
     }
 
     # Allowed modules for financial tools
     ALLOWED_MODULES = {
         'pandas', 'numpy', 'datetime', 'json',
         'math', 'decimal', 'collections', 're',
-        'yfinance', 'typing', 'hashlib',
-        'pathlib'
+        'yfinance', 'typing', 'hashlib'
     }
+
+    def _normalize_encoding(self, code: str) -> str:
+        """Strip encoding declarations to prevent PEP-263 bypass."""
+        lines = code.split('\n')
+        clean = []
+        for i, line in enumerate(lines):
+            if i < 2 and 'coding' in line.lower() and line.strip().startswith('#'):
+                continue  # Skip encoding declaration
+            clean.append(line)
+        return '\n'.join(clean)
+
+    def _log_security_violation(self, violation: str, task_id: str = "unknown"):
+        """Log security violation to file and stderr."""
+        import sys
+        from datetime import datetime
+
+        # Log to stderr
+        print(f"[SECURITY] {violation}", file=sys.stderr)
+
+        # Log to file
+        logs_dir = ROOT_DIR / "data" / "logs"
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        log_path = logs_dir / "security_violations.log"
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(f"{datetime.now().isoformat()} | {task_id} | {violation}\n")
 
     def static_check(self, code: str) -> Tuple[bool, Optional[str]]:
         """
@@ -62,6 +102,9 @@ class ToolExecutor:
         Returns:
             (is_safe, error_message) - error_message is None if safe
         """
+        # Normalize encoding to prevent PEP-263 bypass
+        code = self._normalize_encoding(code)
+
         try:
             tree = ast.parse(code)
         except SyntaxError as e:
@@ -90,25 +133,21 @@ class ToolExecutor:
                 if isinstance(node.func, ast.Name):
                     if node.func.id in self.BANNED_CALLS:
                         return False, f"Banned call: {node.func.id}"
-                    # Special handling for open()
-                    if node.func.id == 'open':
-                        # Check if mode is 'r' (read-only)
-                        mode_ok = False
-                        for kw in node.keywords:
-                            if kw.arg == 'mode' and isinstance(kw.value, ast.Constant):
-                                if kw.value.value == 'r':
-                                    mode_ok = True
-                        # Also check positional args
-                        if len(node.args) >= 2 and isinstance(node.args[1], ast.Constant):
-                            if node.args[1].value == 'r':
-                                mode_ok = True
-                        if not mode_ok:
-                            return False, "open() only allowed with mode='r'"
+                # Check for banned method calls on objects (e.g., obj.__class__)
+                elif isinstance(node.func, ast.Attribute):
+                    if node.func.attr in self.BANNED_CALLS:
+                        return False, f"Banned method call: {node.func.attr}"
 
-            # Check magic attributes
+            # Check magic attributes - use BANNED_ATTRIBUTES set
             elif isinstance(node, ast.Attribute):
-                if node.attr in ('__dict__', '__class__', '__bases__', '__mro__'):
-                    return False, f"Banned magic attribute: {node.attr}"
+                if node.attr in self.BANNED_ATTRIBUTES:
+                    return False, f"Banned attribute access: {node.attr}"
+
+            # Check string literals for banned patterns (catches getattr(obj, 'eval'))
+            elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+                for banned in self.BANNED_CALLS | self.BANNED_ATTRIBUTES:
+                    if banned in node.value:
+                        return False, f"Suspicious string literal containing: {banned}"
 
         return True, None
 
@@ -135,6 +174,8 @@ class ToolExecutor:
         # 1. Static security check
         is_safe, error = self.static_check(code)
         if not is_safe:
+            # Log security violation
+            self._log_security_violation(error, task_id)
             return ExecutionTrace(
                 trace_id=f"t_{uuid.uuid4().hex[:12]}",
                 task_id=task_id,
