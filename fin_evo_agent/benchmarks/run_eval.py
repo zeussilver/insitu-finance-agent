@@ -36,6 +36,8 @@ from src.core.llm_adapter import LLMAdapter
 from src.evolution.synthesizer import Synthesizer
 from src.finance.data_proxy import get_stock_hist
 from src.core.task_executor import TaskExecutor
+from src.core.contracts import get_contract_by_id, get_contract, ToolContract
+from src.core.verifier import MultiStageVerifier
 
 
 # --- ANSI Color Codes ---
@@ -190,7 +192,8 @@ class EvalRunner:
         self.registry = ToolRegistry()
         self.executor = ToolExecutor()
         self.llm = LLMAdapter()
-        self.synthesizer = Synthesizer(self.llm, self.executor, self.registry)
+        self.verifier = MultiStageVerifier(self.executor, self.registry)
+        self.synthesizer = Synthesizer(self.llm, self.executor, self.registry, self.verifier)
         self.task_executor = TaskExecutor(self.registry, self.executor)
 
         # Results tracking
@@ -254,7 +257,11 @@ class EvalRunner:
                     try:
                         parsed = json.loads(output.replace("'", '"'))
                     except (json.JSONDecodeError, ValueError):
-                        parsed = output
+                        # Handle Python boolean strings (True/False)
+                        if output.strip() in ('True', 'False'):
+                            parsed = output.strip() == 'True'
+                        else:
+                            parsed = output
 
                 if judge_result(parsed, expected_output):
                     return ResultState.PASS
@@ -487,33 +494,71 @@ class EvalRunner:
         """Extract schema fields from task for tool matching."""
         query = task.get('query', '').lower()
         category = task.get('category', 'calculation')
+        contract_id = task.get('contract_id', '')
 
-        # Extract indicator type
         indicator = None
-        if 'rsi' in query:
-            indicator = 'rsi'
-        elif 'macd' in query:
-            indicator = 'macd'
-        elif 'bollinger' in query or '布林' in query:
-            indicator = 'bollinger'
-        elif 'kdj' in query:
-            indicator = 'kdj'
-        elif '波动率' in query or 'volatility' in query:
-            indicator = 'volatility'
-        elif '回撤' in query or 'drawdown' in query:
-            indicator = 'drawdown'
-        elif '相关' in query or 'correlation' in query:
-            indicator = 'correlation'
-        elif '量价' in query or 'divergence' in query:
-            indicator = 'volume_price'
-        elif '组合' in query or 'portfolio' in query:
-            indicator = 'portfolio'
-        elif 'ma' in query and 'macd' not in query:
-            indicator = 'ma'
+        data_type = None
+
+        # Fetch tasks - be specific about data type
+        if category == 'fetch':
+            if 'quote' in query or 'market' in query or '市盈率' in query or 'p/e' in query:
+                indicator = 'quote'
+                data_type = 'quote'
+            elif 'net income' in query or 'revenue' in query or 'earnings' in query or '净利润' in query or '营收' in query or 'roe' in query:
+                indicator = 'financial'
+                data_type = 'financial'
+            elif 'dividend' in query or '分红' in query or '股息' in query:
+                indicator = 'dividend'
+                data_type = 'financial'
+            elif 'index' in query or '指数' in query:
+                indicator = 'index'
+                data_type = 'price'
+            elif 'etf' in query or '净值' in query:
+                indicator = 'etf'
+                data_type = 'price'
+            elif 'close' in query or 'price' in query or '收盘' in query or '历史' in query:
+                indicator = 'price'
+                data_type = 'price'
+            # Don't default to any indicator for fetch - leave as None
+
+        # Calculation tasks - extract specific indicator
+        elif category == 'calculation':
+            if 'rsi' in query:
+                indicator = 'rsi'
+            elif 'macd' in query:
+                indicator = 'macd'
+            elif 'bollinger' in query or '布林' in query:
+                indicator = 'bollinger'
+            elif 'kdj' in query:
+                indicator = 'kdj'
+            elif '波动率' in query or 'volatility' in query:
+                indicator = 'volatility'
+            elif '回撤' in query or 'drawdown' in query:
+                indicator = 'drawdown'
+            elif '相关' in query or 'correlation' in query:
+                indicator = 'correlation'
+            elif '量价' in query or 'divergence' in query:
+                indicator = 'volume_price'
+            elif '组合' in query or 'portfolio' in query:
+                indicator = 'portfolio'
+            elif 'ma' in query and 'macd' not in query:
+                indicator = 'ma'
+            # Don't default to 'ma' - leave as None if not detected
+
+        # Composite tasks
+        elif category == 'composite':
+            if '组合' in query or 'portfolio' in query:
+                indicator = 'portfolio'
+            elif '背离' in query or 'divergence' in query:
+                indicator = 'divergence'
+            elif 'signal' in query or '信号' in query:
+                indicator = 'signal'
 
         return {
             'category': category,
             'indicator': indicator,
+            'data_type': data_type,
+            'contract_id': contract_id,
         }
 
     def _prepare_sample_data(self) -> List[float]:
@@ -533,6 +578,14 @@ class EvalRunner:
         category = task["category"]
         query = task["query"]
         expected = task["expected_output"]
+        contract_id = task.get("contract_id")
+
+        # Get contract for validation
+        contract = None
+        if contract_id:
+            contract = get_contract_by_id(contract_id)
+        if not contract:
+            contract = get_contract(task_id)
 
         start_time = time.time()
         result = {
@@ -549,7 +602,9 @@ class EvalRunner:
             "generated_code": None,
             "output": None,
             "refiner_attempts": 0,
-            "stage_on_timeout": None
+            "stage_on_timeout": None,
+            "contract_id": contract_id,
+            "verification_stage": 0
         }
 
         progress = f"[{task_num}/{total}] " if task_num and total else ""
@@ -595,14 +650,14 @@ class EvalRunner:
             schema = self._extract_schema_from_task(task)
             tool = None
 
-            # First try schema-based matching
-            if schema['indicator']:
+            # First try schema-based matching - only if we have a specific indicator
+            if schema.get('indicator'):
                 tool = self.registry.find_by_schema(
                     category=schema['category'],
                     indicator=schema['indicator']
                 )
                 if tool:
-                    print(f"  > Found tool via schema: {tool.name} (indicator={schema['indicator']})")
+                    print(f"  > Found tool via schema: {tool.name} (indicator={schema['indicator']}, data_type={schema.get('data_type')})")
                     result["tool_source"] = "reused"
                     result["generated_code"] = tool.code_content
 
@@ -618,20 +673,29 @@ class EvalRunner:
 
             # 3. Synthesize if not found and allowed
             if not tool and self.agent_config["allow_synthesis"]:
-                print(f"  > Synthesizing new tool...")
+                print(f"  > Synthesizing new tool (category={category})...")
                 if self.agent_config["use_refiner"]:
-                    tool, trace = self.synthesizer.synthesize_with_refine(query, tool_name)
+                    tool, trace = self.synthesizer.synthesize_with_refine(
+                        query, tool_name,
+                        category=category,
+                        contract=contract
+                    )
                     # Track refiner attempts from trace if available
                     if trace and hasattr(trace, 'std_err') and trace.std_err:
                         # Count "Refine attempt" in stderr
                         result["refiner_attempts"] = trace.std_err.count("Refine attempt")
                 else:
-                    tool, trace = self.synthesizer.synthesize(query, tool_name)
+                    tool, trace = self.synthesizer.synthesize(
+                        query, tool_name,
+                        category=category,
+                        contract=contract
+                    )
 
                 if tool:
                     print(f"  > Created tool: {tool.name} v{tool.semantic_version}")
                     result["tool_source"] = "created"
                     result["generated_code"] = tool.code_content
+                    result["verification_stage"] = tool.verification_stage
                 else:
                     print(f"  > Synthesis failed")
                     result["error_type"] = "SynthesisFailed"
