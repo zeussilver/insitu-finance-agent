@@ -148,9 +148,41 @@ class BatchMergeRecord(SQLModel, table=True):
 
 # --- Database Initialization ---
 
+def _migrate_tool_artifacts(engine):
+    """Add new columns to tool_artifacts if they don't exist.
+
+    SQLite doesn't support adding columns via ALTER TABLE with constraints,
+    so we use raw SQL to add nullable columns.
+    """
+    from sqlalchemy import text, inspect
+
+    inspector = inspect(engine)
+    if 'tool_artifacts' not in inspector.get_table_names():
+        return  # Table doesn't exist yet, will be created by create_all
+
+    existing_columns = {col['name'] for col in inspector.get_columns('tool_artifacts')}
+
+    # Phase 5 schema fields to add
+    new_columns = [
+        ('category', 'TEXT'),
+        ('indicator', 'TEXT'),
+        ('data_type', 'TEXT'),
+        ('input_requirements', 'TEXT DEFAULT "[]"'),  # JSON stored as TEXT
+    ]
+
+    with engine.connect() as conn:
+        for col_name, col_type in new_columns:
+            if col_name not in existing_columns:
+                conn.execute(text(f'ALTER TABLE tool_artifacts ADD COLUMN {col_name} {col_type}'))
+                conn.commit()
+
+
 def init_db():
     """Create all tables in the database."""
     engine = create_engine(DB_URL)
+    # First migrate existing tables
+    _migrate_tool_artifacts(engine)
+    # Then create any missing tables
     SQLModel.metadata.create_all(engine)
     return engine
 
