@@ -8,7 +8,7 @@ Pattern: System fetches data via bootstrap tools, then passes to calc tools.
 """
 
 import re
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, List
 from pathlib import Path
 
 import sys
@@ -18,6 +18,42 @@ from src.core.registry import ToolRegistry
 from src.core.executor import ToolExecutor
 from src.core.models import ToolArtifact, ExecutionTrace
 from src.finance.data_proxy import get_stock_hist
+
+
+# Simple fetch patterns that can be handled directly from OHLCV data
+# Pattern order matters - more specific patterns first
+SIMPLE_FETCH_PATTERNS = {
+    'highest_close': [
+        r'highest\s+close\s*price',
+        r'最高收盘价',       # Chinese: "highest closing price"
+    ],
+    'lowest_close': [
+        r'lowest\s+close\s*price',
+        r'最低收盘价',       # Chinese: "lowest closing price"
+    ],
+    'latest_close': [
+        r'latest\s+close\s*price',
+        r'close\s*price',   # Generic "close price" -> latest
+        r'收盘价',          # Chinese: "closing price" -> latest
+    ],
+}
+
+# Queries that require data NOT available in OHLCV
+UNSUPPORTED_FETCH_PATTERNS = [
+    r'net\s+income',
+    r'revenue',
+    r'earnings',
+    r'profit',
+    r'eps',
+    r'dividend',
+    r'balance\s+sheet',
+    r'income\s+statement',
+    r'cash\s+flow',
+    r'financial\s+(statement|info|data)',
+    r'净利润',             # Chinese: "net profit"
+    r'营收',               # Chinese: "revenue"
+    r'财务报表',           # Chinese: "financial statement"
+]
 
 
 class TaskExecutor:
@@ -298,9 +334,15 @@ if __name__ == "__main__":
 
     task_executor = TaskExecutor()
 
-    # Test symbol extraction
+    # Test symbol extraction - basic cases
     assert task_executor.extract_symbol("\u8ba1\u7b97AAPL\u7684RSI") == "AAPL"
     assert task_executor.extract_symbol("\u8ba1\u7b97MSFT\u7684MACD") == "MSFT"
+    # Test symbol extraction - exclusion list (GET should not match)
+    assert task_executor.extract_symbol("Get SPY ETF latest close price") == "SPY", "Should match SPY, not GET"
+    # Test symbol extraction - index mapping
+    assert task_executor.extract_symbol("Get S&P 500 index latest close price") == "^GSPC", "Should map S&P 500 to ^GSPC"
+    assert task_executor.extract_symbol("Get DOW Jones index price") == "^DJI", "Should map DOW to ^DJI"
+    assert task_executor.extract_symbol("Get NASDAQ composite") == "^IXIC", "Should map NASDAQ to ^IXIC"
     print("Symbol extraction: PASS")
 
     # Test date extraction
