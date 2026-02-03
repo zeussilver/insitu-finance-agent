@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-31)
 
 **Core value:** Benchmark task success rate >= 80%
-**Current focus:** Phase 5 - Verification Gap Closure COMPLETE.
+**Current focus:** Phase 5 - Gap Closure Plans 07-09 (symbol extraction, code templates, test improvements)
 
 ## Current Position
 
 Phase: 5 of 5 (Verification Gap Closure)
-Plan: 6 of 6 complete in current phase (05-01, 05-02, 05-03, 05-04, 05-05, 05-06)
-Status: Phase 5 COMPLETE
-Last activity: 2026-02-03 - Completed 05-06-PLAN.md (GitHub Actions CI)
+Plan: 7 of 9 complete in current phase (05-01 through 05-07)
+Status: In progress
+Last activity: 2026-02-03 - Completed 05-07-PLAN.md (Symbol Extraction Fix)
 
-Progress: [██████████] 100%
+Progress: [████████░░] 78% (7/9 plans)
 
 ## Phase 4 Verification Results
 
@@ -34,9 +34,9 @@ Progress: [██████████] 100%
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 12
-- Average duration: 2m 15s
-- Total execution time: ~0.45 hours
+- Total plans completed: 13
+- Average duration: 2m 10s
+- Total execution time: ~0.47 hours
 
 **By Phase:**
 
@@ -46,7 +46,7 @@ Progress: [██████████] 100%
 | 02-prompt-engineering | 1/1 | 1m 49s | 1m 49s |
 | 03-refiner-pipeline | 2/2 | 4m 44s | 2m 22s |
 | 04-regression-verification | 2/2 | ~9m | ~4m 30s |
-| 05-verification-gap-closure | 6/6 | ~14m | ~2m 20s |
+| 05-verification-gap-closure | 7/9 | ~16m | ~2m 17s |
 
 *Updated after each plan completion*
 
@@ -92,19 +92,24 @@ Recent decisions affecting current work:
 - [05-06]: Hard fail on regressions, warn on pass rate < 80% (LLM variance)
 - [05-06]: Cache yfinance data by tasks.jsonl hash for reproducibility
 - [05-06]: Use thollander/actions-comment-pull-request@v2 for PR comments
+- [05-07]: SYMBOL_EXCLUSIONS as class constant set for O(1) lookup
+- [05-07]: INDEX_SYMBOL_MAPPING supports multiple name variants (S&P 500, SP500, S&P500)
+- [05-07]: Extraction order: index names -> known tickers -> regex (avoids GET matching before SPY)
+- [05-07]: Extended known tickers list to include common ETFs (SPY, QQQ, etc.)
 
 ### Pending Todos
 
-None.
+- 05-08: Code template improvements
+- 05-09: Test improvements
 
 ### Blockers/Concerns
 
-All Phase 5 plans complete. Project ready for final verification and release.
+None - continuing with gap closure plans.
 
 ## Session Continuity
 
-Last session: 2026-02-03T05:11:00Z
-Stopped at: Completed 05-06-PLAN.md (GitHub Actions CI)
+Last session: 2026-02-03T05:39:30Z
+Stopped at: Completed 05-07-PLAN.md (Symbol Extraction Fix)
 Resume file: None
 
 ## Phase 5 Plans
@@ -117,6 +122,9 @@ Resume file: None
 | 05-04 | 2 | src/core/task_executor.py | Complete (2026-02-03) |
 | 05-05 | 3 | benchmarks/run_eval.py | Complete (2026-02-03) |
 | 05-06 | 4 | .github/workflows/benchmark.yml | Complete (2026-02-03) |
+| 05-07 | 1 | src/core/task_executor.py | Complete (2026-02-03) |
+| 05-08 | 1 | TBD | Pending |
+| 05-09 | 1 | TBD | Pending |
 
 ## Phase 5 Completed Enhancements
 
@@ -168,3 +176,10 @@ Resume file: None
 - Hard fails on regressions, warns on pass rate < 80%
 - Posts results as PR comment with summary table
 - Uploads benchmark results and security logs as artifacts
+
+**05-07: Symbol Extraction Fix (2026-02-03)**
+- Added SYMBOL_EXCLUSIONS set with 28 common English words
+- Added INDEX_SYMBOL_MAPPING for 10 index name variants
+- Reordered extract_symbol() logic: index names -> known tickers -> regex with exclusions
+- Extended known tickers list to include common ETFs (SPY, QQQ, etc.)
+- Fixed fetch_004 (S&P 500 -> ^GSPC) and fetch_005 (SPY, not GET) regressions
