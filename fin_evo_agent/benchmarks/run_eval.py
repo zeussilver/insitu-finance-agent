@@ -567,6 +567,8 @@ class EvalRunner:
                 if code:
                     is_safe, error = self.executor.static_check(code)
                     if not is_safe:
+                        # Log the security violation
+                        self.executor._log_security_violation(error, task_id)
                         result["state"] = ResultState.PASS
                         result["success"] = True
                         result["tool_source"] = "blocked"
