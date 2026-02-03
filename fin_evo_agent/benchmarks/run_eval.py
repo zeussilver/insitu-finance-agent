@@ -35,6 +35,7 @@ from src.core.executor import ToolExecutor
 from src.core.llm_adapter import LLMAdapter
 from src.evolution.synthesizer import Synthesizer
 from src.finance.data_proxy import get_stock_hist
+from src.core.task_executor import TaskExecutor
 
 
 # --- ANSI Color Codes ---
@@ -190,6 +191,7 @@ class EvalRunner:
         self.executor = ToolExecutor()
         self.llm = LLMAdapter()
         self.synthesizer = Synthesizer(self.llm, self.executor, self.registry)
+        self.task_executor = TaskExecutor(self.registry, self.executor)
 
         # Results tracking
         self.results: List[Dict] = []
@@ -481,6 +483,39 @@ class EvalRunner:
 
         return None
 
+    def _extract_schema_from_task(self, task: dict) -> dict:
+        """Extract schema fields from task for tool matching."""
+        query = task.get('query', '').lower()
+        category = task.get('category', 'calculation')
+
+        # Extract indicator type
+        indicator = None
+        if 'rsi' in query:
+            indicator = 'rsi'
+        elif 'macd' in query:
+            indicator = 'macd'
+        elif 'bollinger' in query or '布林' in query:
+            indicator = 'bollinger'
+        elif 'kdj' in query:
+            indicator = 'kdj'
+        elif '波动率' in query or 'volatility' in query:
+            indicator = 'volatility'
+        elif '回撤' in query or 'drawdown' in query:
+            indicator = 'drawdown'
+        elif '相关' in query or 'correlation' in query:
+            indicator = 'correlation'
+        elif '量价' in query or 'divergence' in query:
+            indicator = 'volume_price'
+        elif '组合' in query or 'portfolio' in query:
+            indicator = 'portfolio'
+        elif 'ma' in query and 'macd' not in query:
+            indicator = 'ma'
+
+        return {
+            'category': category,
+            'indicator': indicator,
+        }
+
     def _prepare_sample_data(self) -> List[float]:
         """Prepare sample price data for tool execution."""
         try:
@@ -554,16 +589,30 @@ class EvalRunner:
                 result["duration_seconds"] = round(time.time() - start_time, 2)
                 return result
 
-            # 2. Try to retrieve existing tool
-            tool_name = self._infer_tool_name(query)
+            # 2. Try to retrieve existing tool using schema-based matching
+            schema = self._extract_schema_from_task(task)
             tool = None
 
-            if tool_name:
-                tool = self.registry.get_by_name(tool_name)
+            # First try schema-based matching
+            if schema['indicator']:
+                tool = self.registry.find_by_schema(
+                    category=schema['category'],
+                    indicator=schema['indicator']
+                )
                 if tool:
-                    print(f"  > Found tool: {tool.name} v{tool.semantic_version}")
+                    print(f"  > Found tool via schema: {tool.name} (indicator={schema['indicator']})")
                     result["tool_source"] = "reused"
                     result["generated_code"] = tool.code_content
+
+            # Fallback to keyword-based matching if schema match fails
+            if not tool:
+                tool_name = self._infer_tool_name(query)
+                if tool_name:
+                    tool = self.registry.get_by_name(tool_name)
+                    if tool:
+                        print(f"  > Found tool via name: {tool.name} v{tool.semantic_version}")
+                        result["tool_source"] = "reused"
+                        result["generated_code"] = tool.code_content
 
             # 3. Synthesize if not found and allowed
             if not tool and self.agent_config["allow_synthesis"]:
@@ -594,44 +643,8 @@ class EvalRunner:
                 print(f"  {Colors.RED}FAIL{Colors.RESET} {result['error_type']}")
                 return result
 
-            # 4. Execute the tool
-            # Extract stock symbol from query if present
-            query_upper = query.upper()
-            symbol = "AAPL"  # default
-            for ticker in ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "META", "NVDA"]:
-                if ticker in query_upper:
-                    symbol = ticker
-                    break
-
-            prices = self._prepare_sample_data()
-
-            # Provide comprehensive args — executor's inspect.signature
-            # filtering will pick only the ones the function accepts
-            args = {
-                "prices": prices,
-                "prices1": prices,
-                "prices2": prices[::-1],
-                "symbol": symbol,
-                "start": "2023-01-01",
-                "end": "2023-12-31",
-                "period": 14,
-                "window": 20,
-                "num_std": 2,
-                "n": 14,
-                "fast_period": 12,
-                "slow_period": 26,
-                "signal_period": 9,
-                "k_period": 9,
-                "d_period": 3,
-                "days": 30,
-            }
-
-            trace = self.executor.execute(
-                tool.code_content,
-                tool.name,
-                args,
-                task_id
-            )
+            # 4. Execute the tool using TaskExecutor
+            trace = self.task_executor.execute_task(task, tool)
 
             stderr = trace.std_err or ""
             output = ""
