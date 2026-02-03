@@ -1,0 +1,27 @@
+task_id,category,agent_type,success,tool_source,execution_time_ms,error_type
+fetch_001,fetch,evolving,False,reused,308,"Traceback (most recent call last):
+  File ""/var/folders/rq/m2mr65p15bn306ggbf3ty4fm0000gn/T/tmp3xo1c"
+fetch_002,fetch,evolving,True,reused,1964,
+fetch_003,fetch,evolving,False,reused,893,"Traceback (most recent call last):
+  File ""/var/folders/rq/m2mr65p15bn306ggbf3ty4fm0000gn/T/tmp4ypgd"
+fetch_004,fetch,evolving,False,reused,3034,Data fetch failed: Failed to fetch data for GET: No data returned for GET
+fetch_005,fetch,evolving,False,reused,1589,Data fetch failed: Failed to fetch data for GET: No data returned for GET
+fetch_006,fetch,evolving,False,reused,855,"Traceback (most recent call last):
+  File ""/var/folders/rq/m2mr65p15bn306ggbf3ty4fm0000gn/T/tmp2bhqe"
+fetch_007,fetch,evolving,True,reused,235,
+fetch_008,fetch,evolving,True,reused,880,
+calc_001,calculation,evolving,True,reused,305,
+calc_002,calculation,evolving,True,created,14541,
+calc_003,calculation,evolving,True,reused,237,
+calc_004,calculation,evolving,True,reused,233,
+calc_005,calculation,evolving,True,created,16736,
+calc_006,calculation,evolving,False,reused,254,ExecutionFailed
+calc_007,calculation,evolving,True,reused,236,
+calc_008,calculation,evolving,False,created,19066,"Traceback (most recent call last):
+  File ""/var/folders/rq/m2mr65p15bn306ggbf3ty4fm0000gn/T/tmpzwptv"
+comp_001,composite,evolving,True,reused,238,
+comp_002,composite,evolving,False,created,12338,"Traceback (most recent call last):
+  File ""/var/folders/rq/m2mr65p15bn306ggbf3ty4fm0000gn/T/tmpa_3lt"
+comp_003,composite,evolving,False,created,15352,"Traceback (most recent call last):
+  File ""/var/folders/rq/m2mr65p15bn306ggbf3ty4fm0000gn/T/tmp4s_f0"
+comp_004,composite,evolving,True,reused,237,

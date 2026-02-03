@@ -1,0 +1,21 @@
+task_id,category,agent_type,success,tool_source,execution_time_ms,error_type
+fetch_001,fetch,evolving,True,created,28578,
+fetch_002,fetch,evolving,True,created,21857,
+fetch_003,fetch,evolving,False,reused,2270,/Users/liuzhenqian/Desktop/personal project/2026-1-week3/Insitu finance agent/fin_evo_agent/.venv/li
+fetch_004,fetch,evolving,True,created,16613,
+fetch_005,fetch,evolving,True,created,56227,
+fetch_006,fetch,evolving,True,reused,2127,
+fetch_007,fetch,evolving,True,created,101349,
+fetch_008,fetch,evolving,True,created,137962,
+calc_001,calculation,evolving,True,created,15489,
+calc_002,calculation,evolving,True,created,16390,
+calc_003,calculation,evolving,True,created,18265,
+calc_004,calculation,evolving,True,created,17413,
+calc_005,calculation,evolving,True,created,15482,
+calc_006,calculation,evolving,True,created,27128,
+calc_007,calculation,evolving,True,reused,2058,
+calc_008,calculation,evolving,True,created,21417,
+comp_001,composite,evolving,True,reused,273,
+comp_002,composite,evolving,False,created,25185,ExecutionFailed
+comp_003,composite,evolving,True,created,79838,
+comp_004,composite,evolving,True,reused,289,
