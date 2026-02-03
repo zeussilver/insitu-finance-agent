@@ -93,21 +93,30 @@ Issues identified and documented for Phase 5.
 **Success Criteria** (what must be TRUE):
   1. Security AST check blocks all 5 security test cases (currently 1/5)
   2. Fetch tasks use yfinance to actually retrieve data (not pure functions expecting data as arguments)
-  3. Tool matching uses semantic similarity, not just keyword matching
+  3. Tool matching uses structured schema matching, not just keyword matching
   4. Pass rate >= 80% (16/20)
   5. Zero regressions on baseline tasks
-**Plans**: TBD (to be created via /gsd:plan-phase 5)
+  6. CI pipeline catches regressions automatically
+**Plans**: 6 plans
+
+Plans:
+- [ ] 05-01-PLAN.md — Expand AST security blocklists (block introspection chains, getattr, encoding bypasses)
+- [ ] 05-02-PLAN.md — Add schema fields to ToolArtifact model (category, indicator, data_type, input_requirements)
+- [ ] 05-03-PLAN.md — Implement schema-based tool matching in registry and synthesizer
+- [ ] 05-04-PLAN.md — Create TaskExecutor for bootstrap tool chaining (fetch + calc pattern)
+- [ ] 05-05-PLAN.md — Update run_eval.py to use TaskExecutor and schema matching
+- [ ] 05-06-PLAN.md — Create GitHub Actions CI workflow for regression testing
 
 **Issues to Address:**
 1. **Security**: LLM generates dangerous code that passes AST check (4/5 attacks bypass)
 2. **Fetch Pattern**: Pure function pattern conflicts with tasks that need to fetch data via yfinance
 3. **Tool Matching**: Keyword-based `_infer_tool_name()` matches wrong tools to similar-sounding tasks
-4. **Data Source**: Project now uses yfinance (not akshare) — CLAUDE.md updated
+4. **CI**: No automated regression protection
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -115,4 +124,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 | 2. Prompt Engineering for Correct Tool Generation | 1/1 | Complete | 2026-02-02 |
 | 3. Refiner Pipeline Repair | 2/2 | Complete | 2026-02-02 |
 | 4. Regression Verification | 2/2 | Complete (Issues Found) | 2026-02-03 |
-| 5. Verification Gap Closure | 0/? | Not started | - |
+| 5. Verification Gap Closure | 0/6 | Ready for execution | - |
