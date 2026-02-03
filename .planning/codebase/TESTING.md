@@ -1,258 +1,335 @@
 # Testing Patterns
 
-**Analysis Date:** 2026-01-31
+**Analysis Date:** 2026-02-03
 
 ## Test Framework
 
 **Runner:**
-- No formal test framework configured (pytest, unittest, vitest not present)
-- Testing is manual and embedded
+- No formal test framework detected (no pytest, unittest configuration)
+- Manual testing through:
+  - `if __name__ == "__main__":` blocks in modules
+  - `benchmarks/run_eval.py` evaluation suite
+  - `main.py --security-check` command
 
 **Assertion Library:**
-- Python built-in `assert` statements only
-- No external assertion library (no pytest, unittest, or nose)
+- Built-in `assert` statements
+- No external assertion library (pytest, unittest.mock)
 
 **Run Commands:**
 ```bash
-# Run module self-tests (each module has if __name__ == "__main__" block)
-python src/core/executor.py       # Test AST checking and execution
-python src/core/registry.py       # Test tool registration and retrieval
-python src/core/llm_adapter.py    # Test LLM protocol cleaning
-python src/evolution/synthesizer.py  # Test tool synthesis workflow
-python src/evolution/refiner.py   # Test error analysis and refinement
-
-# Run evaluation benchmark suite
-python benchmarks/run_eval.py --agent evolving --run-id run1
-python benchmarks/run_eval.py --security-only
-
-# Run CLI entry point for quick validation
-python main.py --init             # Initialize database
-python main.py --task "计算 RSI"   # End-to-end tool synthesis + execution
-python main.py --security-check   # Verify security mechanisms
+python main.py --security-check     # Verify security mechanisms
+python benchmarks/run_eval.py       # Run benchmark evaluation
+python src/core/executor.py         # Test executor module
+python src/core/verifier.py         # Test verifier module
+python src/core/capabilities.py     # Test capability system
 ```
 
 ## Test File Organization
 
 **Location:**
-- Tests embedded in each source module's `if __name__ == "__main__":` block
-- No separate `test/` directory
-- Benchmark tasks in `benchmarks/tasks.jsonl` and `benchmarks/security_tasks.jsonl`
+- Inline tests in `if __name__ == "__main__":` blocks within source files
+- Evaluation suite: `benchmarks/run_eval.py`, `benchmarks/compare_runs.py`
+- Task definitions: `benchmarks/tasks.jsonl`
+- No separate `tests/` directory
 
 **Naming:**
-- Test blocks use `if __name__ == "__main__":` pattern
-- Test code commented as "Test case 1:", "Test case 2:"
+- No dedicated test files (`test_*.py` or `*_test.py`)
+- Test data in JSONL: `benchmarks/tasks.jsonl`, `benchmarks/security_tasks.jsonl`
+- Results stored: `benchmarks/results/*.json`
 
 **Structure:**
 ```
-src/
-├── core/
-│   ├── executor.py          # Tests: safe_code, dangerous_codes list, execute sample
-│   ├── registry.py          # Tests: registration, retrieval, deduplication
-│   ├── llm_adapter.py       # Tests: protocol cleaning, code generation
-│   └── models.py            # (No tests)
-├── evolution/
-│   ├── synthesizer.py       # Tests: synthesize() call with task
-│   └── refiner.py           # Tests: refine() with failing code example
-└── finance/
-    └── bootstrap.py         # Tests: create_bootstrap_tools()
+fin_evo_agent/
+├── src/
+│   └── core/
+│       └── executor.py          # Contains tests in __main__
+├── benchmarks/
+│   ├── run_eval.py              # Evaluation suite
+│   ├── compare_runs.py          # Result comparison
+│   ├── tasks.jsonl              # 20 benchmark tasks
+│   └── results/                 # Test results
 ```
 
 ## Test Structure
 
 **Suite Organization:**
-
-Each module follows this pattern:
 ```python
 if __name__ == "__main__":
-    print("=== Testing [Component] ===\n")
-
-    # Initialize if needed
-    init_db()
-    component = SomeClass()
-
-    # Test case 1
-    result = component.method(...)
-    assert condition, f"Expected X, got {result}"
-    print("Test 1 passed!")
-
-    # Test case 2
-    result2 = component.method(...)
-    assert condition2, f"Expected Y, got {result2}"
-    print("Test 2 passed!")
-```
-
-**Example from `src/core/executor.py` (lines 252-289):**
-```python
-if __name__ == "__main__":
-    executor = ToolExecutor()
-
     # Test 1: Safe code
-    safe_code = '''
-import pandas as pd
-
-def calc_ma(prices: list, window: int = 5) -> float:
-    """Calculate moving average."""
-    return float(pd.Series(prices).rolling(window).mean().iloc[-1])
-
-if __name__ == "__main__":
-    result = calc_ma([1, 2, 3, 4, 5, 6, 7], 3)
-    assert result == 6.0, f"Expected 6.0, got {result}"
-    print("Test passed!")
-'''
+    safe_code = '''...'''
     is_safe, error = executor.static_check(safe_code)
-    print(f"Safe code check: is_safe={is_safe}, error={error}")
+    print(f"Safe code check: is_safe={is_safe}")
 
-    # Test 2: Dangerous code list
-    dangerous_codes = [
-        'import os; os.system("ls")',
-        'import subprocess; subprocess.run(["ls"])',
-        'eval("1+1")',
-    ]
-    print("\nDangerous code checks:")
+    # Test 2: Dangerous code
+    dangerous_codes = [...]
     for code in dangerous_codes:
         is_safe, error = executor.static_check(code)
         print(f"  {code[:30]}... -> blocked={not is_safe}")
+
+    # Test 3: Execute safe code
+    trace = executor.execute(safe_code, "verify_only", {}, "test_task")
+    print(f"Exit code: {trace.exit_code}")
 ```
+
+**Patterns:**
+- Multiple test cases in sequence
+- Print-based output verification
+- Manual inspection of results
+- Example from `src/core/verifier.py`:
+  ```python
+  # Test with contract
+  passed, report = verifier.verify_all_stages(
+      code=test_code,
+      category="calculation",
+      task_id="test_001",
+      contract=contract
+  )
+
+  print(f"Verification result: {'PASS' if passed else 'FAIL'}")
+  for stage in report.stages:
+      print(f"  {stage.stage.name}: {stage.result.value}")
+  ```
 
 ## Mocking
 
-**Framework:** None - uses actual components in tests
+**Framework:** No mocking framework
 
 **Patterns:**
-
-1. **Mock LLM Response:**
-   - `src/core/llm_adapter.py` provides `_mock_generate()` method (lines 142-201)
-   - Returns hardcoded RSI tool code when no API key present
-   - Used fallback: `raw_response = self._mock_generate(task)` (line 118)
-
-2. **Mock ExecutionTrace:**
-   ```python
-   from src.core.models import ExecutionTrace
-
-   mock_trace = ExecutionTrace(
-       trace_id=f"t_{uuid.uuid4().hex[:12]}",
-       task_id="test_refine",
-       input_args={},
-       output_repr="",
-       exit_code=1,
-       std_out="",
-       std_err="ZeroDivisionError: division by zero",
-       execution_time_ms=100
-   )
-   ```
-   Example: `src/evolution/refiner.py` lines 318-328
-
-3. **Sample Data:**
-   - `benchmarks/run_eval.py` uses fallback data: `[10, 12, 11, 13, 15, 17, ...]` (line 207-209)
-   - Used when network unavailable: `get_a_share_hist()` falls back to sample list
+- Conditional mock responses when API key not present
+- Mock LLM responses in `src/core/llm_adapter.py`:
+  ```python
+  def generate_tool_code(self, task: str, error_context: Optional[str] = None) -> dict:
+      if self.client is None:
+          # Mock only when no API key configured
+          raw_response = self._mock_generate(task, category)
+      else:
+          # Real API call
+          completion = self.client.chat.completions.create(...)
+  ```
+- Sample data generation for testing:
+  ```python
+  sample_prices = [10, 12, 11, 13, 15, 17, 16, 15, 14, 13, 14, 15, 16, 17, 18]
+  test_args = {"prices": sample_prices, "period": 14}
+  ```
 
 **What to Mock:**
-- LLM API responses (when no API_KEY env var)
-- Network calls to AkShare/yfinance (use sample data or cached Parquet)
-- External data sources in benchmarks
+- LLM API calls when no API key configured
+- Network requests (implicitly via cache)
+- Test runs default to mock mode
 
 **What NOT to Mock:**
-- File system operations (create directories, write tool code)
-- Database operations (SQLModel/SQLite - use real in-memory or file DB)
-- AST parsing and security checks (must test real code)
-- Subprocess execution (must test real sandbox behavior)
+- AST security validation (always real)
+- Subprocess execution (always sandboxed)
+- Core logic and algorithms
 
 ## Fixtures and Factories
 
 **Test Data:**
+```python
+# From benchmarks/tasks.jsonl - structured test cases
+{
+    "task_id": "calc_rsi",
+    "query": "计算 RSI 相对强弱指标",
+    "category": "calculation",
+    "contract_id": "calc_rsi",
+    "expected_output": {
+        "type": "numeric",
+        "value": 65.0,
+        "tolerance": 0.1
+    }
+}
 
-1. **Code Fixtures:**
-   - Safe code example in `src/core/executor.py` (lines 256-267)
-   - Dangerous code list in `src/core/executor.py` (lines 272-278)
-   - Bootstrap tool code templates in `src/finance/bootstrap.py` (lines 24-279)
-
-2. **Tool Fixtures:**
-   - Registry test creates tool with: `test_code`, `args_schema`, `permissions` (lines 180-198 in registry.py)
-   - Tool artifacts used directly from database
-
-3. **Benchmark Tasks:**
-   - Location: `benchmarks/tasks.jsonl` (20 tasks) and `benchmarks/security_tasks.jsonl` (5 tasks)
-   - Format: JSON lines with `task_id`, `category`, `query`, `expected_output`
-   - Example task:
-     ```json
-     {
-       "task_id": "fetch_001",
-       "category": "fetch",
-       "query": "Get stock price history for AAPL",
-       "expected_output": {"type": "numeric", "value": null}
-     }
-     ```
+# Inline sample data in verifier
+sample_prices = [100.0, 101.5, 99.8, 102.3, 101.0, ...]
+sample_volumes = [1000000, 1100000, 950000, ...]
+```
 
 **Location:**
-- Code fixtures inline in each test block
-- Tool code templates as module-level strings in `src/finance/bootstrap.py`
-- Benchmark tasks in `benchmarks/` directory
+- JSONL files: `benchmarks/tasks.jsonl`
+- Inline in test functions: `src/core/verifier.py:_generate_test_args()`
+- No centralized fixture repository
 
 ## Coverage
 
-**Requirements:** No coverage tracking or enforcement
+**Requirements:** No coverage tracking configured
 
 **View Coverage:**
-- Not applicable (no coverage tools configured)
-- Coverage can be estimated by running benchmarks: `benchmarks/run_eval.py`
+- Not available
+- Manual inspection through evaluation results
+- Success rate metrics in `benchmarks/run_eval.py`
+
+**Current Metrics (from Architecture Overhaul):**
+- Target: 90%+ task success rate
+- Security Block Rate: 100% (verified)
+- Tool Reuse Rate: ≥30% target
 
 ## Test Types
 
 **Unit Tests:**
-- Scope: Individual class methods and utility functions
-- Approach: Direct instantiation and method calls
-- Examples:
-  - `ToolExecutor.static_check()` - AST analysis for single code snippets
-  - `LLMAdapter._clean_protocol()` - Response parsing
-  - `ToolRegistry.register()` - Tool registration
-  - `Synthesizer.extract_function_name()` - Code analysis
+- Inline module tests in `if __name__ == "__main__":`
+- Scope: Individual functions and classes
+- Example from `src/core/executor.py`:
+  ```python
+  if __name__ == "__main__":
+      executor = ToolExecutor()
+
+      # Test 1: Safe code
+      safe_code = '''...'''
+      is_safe, error = executor.static_check(safe_code)
+
+      # Test 2: Dangerous code
+      dangerous_codes = [...]
+      for code in dangerous_codes:
+          is_safe, error = executor.static_check(code)
+  ```
 
 **Integration Tests:**
-- Scope: Multi-component workflows
-- Approach: Full end-to-end task execution
-- Examples:
-  - `Synthesizer.synthesize()` - LLM generate → AST check → verify → register
-  - `Refiner.refine()` - Error analysis → patch generation → verify
-  - `main.py --task` - Complete workflow from task to result
+- Multi-stage verification pipeline tests tool integration
+- Stage 4 (INTEGRATION) in `src/core/verifier.py`:
+  ```python
+  def _verify_integration(self, code: str, func_name: str, real_data: Dict[str, Any], task_id: str):
+      """Stage 4: Verify with real data (fetch tools only)."""
+      trace = self.executor.execute(code, func_name, real_data, task_id)
+      # Validate against real yfinance data
+  ```
 
 **E2E Tests:**
-- Framework: `benchmarks/run_eval.py`
-- 25 total tasks across 3 categories:
-  - **Fetch & Lookup** (8 tasks): Data retrieval + field extraction
-  - **Calculation** (8 tasks): Technical indicators (RSI, MACD, etc.)
-  - **Composite** (4 tasks): Multi-tool composition
-- **Security** (5 tasks): Verify dangerous operations are blocked
-- Metrics measured:
-  - Task Success Rate (% tasks passing)
-  - Tool Reuse Rate (% reused vs created on second run)
-  - Security Block Rate (% malicious code blocked)
-  - Regression Rate (consistency across runs)
+- Evaluation suite: `benchmarks/run_eval.py`
+- Full workflow: task → synthesis → verification → execution → judgment
+- 20 benchmark tasks covering fetch, calculation, and composite categories
+- Result tracking: `benchmarks/results/*.json`
+
+**Security Tests:**
+- Dedicated security verification: `main.py --security-check`
+- Dangerous code patterns: `benchmarks/security_tasks.jsonl`
+- AST-level validation tests in `src/core/executor.py`
 
 ## Common Patterns
 
+**Self-Test Pattern (Generated Tools):**
+```python
+def calc_rsi(prices: list, period: int = 14) -> float:
+    """Calculate RSI indicator."""
+    # ... implementation ...
+    return float(rsi.iloc[-1])
+
+if __name__ == "__main__":
+    # Test case 1: Normal data
+    test_prices = [44, 44.5, 44.25, 43.75, 44.5, ...]
+    result = calc_rsi(test_prices, 5)
+    assert 0 <= result <= 100
+
+    # Test case 2: Edge case
+    short_prices = [10, 11]
+    result2 = calc_rsi(short_prices, 14)
+    assert result2 == 50.0
+
+    print("Tests passed!")
+```
+
+**Verification Pipeline Pattern:**
+```python
+# From src/core/verifier.py
+passed, report = verifier.verify_all_stages(
+    code=code,
+    category=category,
+    task_id=task_id,
+    contract=contract
+)
+
+for stage in report.stages:
+    if stage.result == VerificationResult.FAIL:
+        print(f"Failed at {stage.stage.name}: {stage.message}")
+```
+
 **Async Testing:**
-- Not applicable (no async code in project)
+- Not used (no async/await patterns in codebase)
 
 **Error Testing:**
-- Test error classification: `Refiner._classify_error()` pattern matching (lines 72-78)
-- Test error recovery: `Refiner.refine()` with `max_attempts=3` (line 186)
-- Test security blocking:
-  ```python
-  dangerous_code = 'import os; os.system("ls")'
-  is_safe, error = executor.static_check(dangerous_code)
-  assert not is_safe, "Should block OS imports"
-  ```
+```python
+# Security violation testing
+dangerous_codes = [
+    'import os; os.system("ls")',
+    'import subprocess; subprocess.run(["ls"])',
+    'eval("1+1")',
+]
 
-**Boundary Tests:**
-- Empty input handling: `calc_rsi()` with insufficient data (line 198 in llm_adapter.py)
-- DataFrame operations: Check for empty DataFrames before processing (line 58 in bootstrap.py)
-- Timeout testing: `subprocess.TimeoutExpired` catch in executor.py (line 218)
+all_blocked = True
+for code in dangerous_codes:
+    is_safe, error = executor.static_check(code)
+    if is_safe:
+        all_blocked = False
 
-**Regression Tests:**
-- Benchmark suite tracks tool reuse across runs
-- Compare consecutive runs with `benchmarks/compare_runs.py`
-- Security baseline: All 5 security tasks must be blocked in every run
+if all_blocked:
+    print("[Pass] All dangerous operations blocked!")
+```
+
+**Contract Validation Testing:**
+```python
+# From src/core/verifier.py
+def _validate_output(self, output: Optional[str], contract: ToolContract) -> Tuple[bool, str]:
+    """Validate output matches contract constraints."""
+    if contract.output_type == OutputType.NUMERIC:
+        return self._validate_numeric(output, contract)
+    elif contract.output_type == OutputType.DICT:
+        return self._validate_dict(output, contract)
+    # ... more output types
+```
+
+**Retry Testing Pattern:**
+```python
+# From src/core/verifier.py - integration test with retry
+for attempt in range(max_retries + 1):
+    trace = self.executor.execute(code, func_name, real_data, task_id)
+    if trace.exit_code != 0:
+        network_errors = ['timeout', 'connection', 'network', '503', '504']
+        is_network_error = any(err in stderr_lower for err in network_errors)
+        if is_network_error and attempt < max_retries:
+            time.sleep(1.0 * (attempt + 1))
+            continue
+    # ... success path
+```
+
+## Evaluation Framework
+
+**Benchmark Structure:**
+- Tasks defined in JSONL: `benchmarks/tasks.jsonl`
+- Three-state results: PASS, FAIL, ERROR
+- Judging functions: `numeric_match()`, `list_match()`, `struct_match()`, `boolean_match()`
+
+**Metrics Tracked:**
+```python
+# From benchmarks/run_eval.py
+{
+    "task_success_rate": pass_count / total,
+    "tool_reuse_rate": reuse_count / total,
+    "security_block_rate": 1.0,
+    "pass_count": pass_count,
+    "fail_count": fail_count,
+    "error_count": error_count
+}
+```
+
+**Result Classification:**
+```python
+class ResultState:
+    PASS = "pass"    # Task completed successfully
+    FAIL = "fail"    # Logic failure (wrong output)
+    ERROR = "error"  # External error (API, timeout, network)
+```
+
+**Test Execution:**
+```bash
+# Run evaluation with fresh registry
+python benchmarks/run_eval.py --clear-registry --run-id fresh_run
+
+# Compare two runs
+python benchmarks/compare_runs.py run1 run2
+
+# Security-only evaluation
+python benchmarks/run_eval.py --security-only
+```
 
 ---
 
-*Testing analysis: 2026-01-31*
+*Testing analysis: 2026-02-03*

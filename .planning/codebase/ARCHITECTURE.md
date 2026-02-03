@@ -1,261 +1,166 @@
 # Architecture
 
-**Analysis Date:** 2026-01-31
+**Analysis Date:** 2026-02-03
 
 ## Pattern Overview
 
-**Overall:** Tool Evolution Loop with Secure Sandbox Execution
+**Overall:** Self-Evolving Tool System with Multi-Stage Verification Pipeline
 
 **Key Characteristics:**
-- **Metadata in DB, Payload on Disk** - SQLite stores tool metadata; actual code stored as .py files on disk
-- **Generate → Verify → Register → Refine** - Self-evolving tool pipeline with LLM feedback loop
-- **AST Static Analysis + Subprocess Sandboxing** - Two-layer security preventing dangerous operations before execution
-- **Record-Replay Caching** - Frozen data snapshots for reproducible analysis
-- **JSON-IPC for Sandbox Communication** - Subprocess isolation avoids eval() and string interpolation exploits
+- LLM-driven code generation with capability-based security validation
+- "Metadata in DB, Payload on Disk" separation for auditability
+- Contract-based output validation with progressive verification stages
+- Record-replay caching for reproducible data access
 
 ## Layers
 
-**LLM Layer:**
-- Purpose: Generate tool code from natural language task descriptions
-- Location: `src/core/llm_adapter.py`
-- Contains: Qwen3-Max API client, protocol cleaning (extract thinking traces and code payloads), system prompts for tool generation
-- Depends on: OpenAI client library, configuration from `src/config.py`
-- Used by: `src/evolution/synthesizer.py`, `src/evolution/refiner.py`
+**Presentation Layer (CLI):**
+- Purpose: User interface and command orchestration
+- Location: `fin_evo_agent/main.py`
+- Contains: Argument parsing, command handlers (init, bootstrap, task, list, security-check)
+- Depends on: Core layer, Evolution layer, Finance layer
+- Used by: End users, benchmark scripts
 
-**Security Layer:**
-- Purpose: Prevent execution of dangerous code through static and runtime checks
-- Location: `src/core/executor.py`
-- Contains: AST static analysis (banned imports, functions, magic attributes), subprocess sandbox with timeout/memory limits
-- Depends on: Python's ast module, subprocess module
-- Used by: `src/evolution/synthesizer.py`, `src/evolution/refiner.py`, `main.py` (CLI security verification)
-
-**Registry Layer:**
-- Purpose: Manage tool lifecycle - storage, retrieval, versioning, deduplication
-- Location: `src/core/registry.py`
-- Contains: Tool registration, content-hash based deduplication, version tracking, file path generation
-- Depends on: SQLModel ORM, `src/core/models.py`
-- Used by: `src/evolution/synthesizer.py`, `src/evolution/refiner.py`, `main.py`
+**Core Layer:**
+- Purpose: System primitives for tool lifecycle management
+- Location: `fin_evo_agent/src/core/`
+- Contains: Data models, registry, executor, verifier, contracts, capabilities
+- Depends on: Config, SQLModel, AST analysis
+- Used by: Evolution layer, Task execution layer
 
 **Evolution Layer:**
-- Purpose: Implement the synthesis and refinement loops for tool generation
-- Location: `src/evolution/synthesizer.py`, `src/evolution/refiner.py`
-- Contains:
-  - Synthesizer: LLM generation → AST check → sandbox test → registration
-  - Refiner: Error classification → LLM patch generation → re-verification (max 3 attempts)
-- Depends on: LLMAdapter, ToolExecutor, ToolRegistry
-- Used by: `main.py` task command
+- Purpose: Tool generation and refinement loop
+- Location: `fin_evo_agent/src/evolution/`
+- Contains: Synthesizer (generate → verify → register), Refiner (error analysis → patch)
+- Depends on: Core layer (LLM adapter, executor, registry, verifier)
+- Used by: Task executor, evaluation suite
 
 **Finance Layer:**
-- Purpose: Provide financial data access and bootstrap tools
-- Location: `src/finance/data_proxy.py`, `src/finance/bootstrap.py`
-- Contains:
-  - DataProvider: yfinance wrapper with MD5-keyed Parquet caching
-  - Bootstrap tools: 5 initial tools (stock history, financial info, real-time quotes, index data, ETF data)
-- Depends on: yfinance, pandas
-- Used by: Bootstrap initialization, task data preparation in `main.py`
+- Purpose: Domain-specific data access with reproducibility
+- Location: `fin_evo_agent/src/finance/`
+- Contains: Data proxy (yfinance caching), bootstrap tools (atomic fetch functions)
+- Depends on: yfinance, pandas, config (CACHE_DIR)
+- Used by: Task executor, bootstrap initialization
 
-**Data Model Layer:**
-- Purpose: Define SQLModel schemas for persistent tool artifact tracking
-- Location: `src/core/models.py`
-- Contains: 5 tables (ToolArtifact, ExecutionTrace, ErrorReport, ToolPatch, BatchMergeRecord)
-- Depends on: SQLModel, SQLAlchemy
-- Used by: Registry, Executor, Synthesizer, Refiner
-
-**CLI Layer:**
-- Purpose: Entry point for user interactions
-- Location: `main.py`
-- Contains: Command handlers (init, bootstrap, task, list, security-check)
-- Depends on: All above layers
-- Used by: End user via command line
+**Data Layer:**
+- Purpose: Persistent storage for tools and execution history
+- Location: `fin_evo_agent/data/`
+- Contains: SQLite database (metadata), artifact files (.py code), cache (parquet), logs
+- Depends on: SQLModel, filesystem
+- Used by: Registry, executor, data proxy
 
 ## Data Flow
 
-**Task Execution Flow (primary flow):**
+**Tool Synthesis Flow:**
 
-1. User invokes `main.py --task "计算 RSI"`
-2. Registry attempts lookup by inferred tool name (e.g., "calc_rsi")
-3. If tool not found, Synthesizer generates:
-   - LLMAdapter generates code via Qwen3-Max with thinking mode
-   - Protocol cleaned (extract ```python...``` code block)
-   - ToolExecutor static check (AST analysis)
-   - ToolExecutor runs `if __name__ == '__main__':` tests in subprocess sandbox
-   - If pass: Registry stores code file + metadata, returns ToolArtifact
-   - If fail: Refiner attempts repair (up to 3 iterations)
-4. ToolExecutor executes tool with provided arguments in sandbox
-5. ExecutionTrace captures input/output/timing/errors
-6. Result extracted and returned to user
+1. User provides task description → `Synthesizer.synthesize()`
+2. LLM generates Python code (category-specific prompt) → `LLMAdapter.generate_tool_code()`
+3. Multi-stage verification pipeline:
+   - Stage 1: AST security check (capability-based) → `MultiStageVerifier._verify_ast_security()`
+   - Stage 2: Self-test execution (built-in asserts) → `MultiStageVerifier._verify_self_test()`
+   - Stage 3: Contract validation (output constraints) → `MultiStageVerifier._verify_contract()`
+   - Stage 4: Integration test (real data for fetch tools) → `MultiStageVerifier._verify_integration()`
+4. If all stages pass: Write code to disk → `ToolRegistry.register()`
+5. If any stage fails: Invoke refiner with error context → `Refiner.refine()`
 
-**Tool Synthesis Loop (with refinement):**
+**Task Execution Flow:**
 
-```
-Task Description
-       ↓
-LLMAdapter.generate_tool_code()
-       ↓
-ToolExecutor.static_check() [AST analysis]
-       ↓
-ToolExecutor.execute() [Sandbox with test block]
-       ↓
-    Pass?
-    ↙   ↘
-  Yes    No (exit_code ≠ 0)
-  ↓      ↓
-  ↓     Refiner.refine()
-  ↓      ↓
-  ↓     _classify_error() [regex patterns]
-  ↓      ↓
-  ↓     LLMAdapter.refine_tool_code() [with error context]
-  ↓      ↓
-  ↓     ErrorReport created
-  ↓      ↓
-  ↓     ToolExecutor.static_check() [new code]
-  ↓      ↓
-  ↓     ToolExecutor.execute() [re-test]
-  ↓      ↓
-  ↓     Max 3 attempts?
-  ↓      ↓
-  ↓     if max attempts: ToolArtifact.status = FAILED
-  ↓      ↓
-  └──────┘
-        ↓
-ToolRegistry.register()
-        ↓
-Code file written to data/artifacts/generated/{name}_v{ver}_{hash8}.py
-Metadata inserted to tool_artifacts table
-```
-
-**Data Caching (Record-Replay):**
-
-1. Task calls `get_a_share_hist("000001", "20230101", "20230201")`
-2. DataProvider.reproducible decorator creates cache key: MD5(func_name + args + kwargs)
-3. Cache hit: Read from `data/cache/{hash}.parquet`
-4. Cache miss: Call yfinance, convert all columns to str, save to Parquet
-5. Subsequent runs: Always read from cache (deterministic)
+1. User provides task query → `TaskExecutor.execute_task()`
+2. Extract symbol and date range from query → `TaskExecutor.extract_symbol()`, `TaskExecutor.extract_date_range()`
+3. Fetch OHLCV data via cached proxy → `get_stock_hist()` (with retry)
+4. Check if simple fetch pattern (latest/highest/lowest close) → `TaskExecutor._handle_simple_fetch()`
+5. If simple: Return direct result, skip tool execution
+6. If complex: Prepare args from data → `TaskExecutor.prepare_calc_args()`
+7. Execute tool in sandbox → `ToolExecutor.execute()` (subprocess isolation)
+8. Return execution trace with result/error
 
 **State Management:**
-
-- **Tool State**: Persisted in SQLite `tool_artifacts` table (status: PROVISIONAL, VERIFIED, DEPRECATED, FAILED)
-- **Execution History**: Stored in `execution_traces` table for debugging and refinement context
-- **Error Analysis**: `error_reports` table links trace errors to LLM-generated root cause analysis
-- **Repair Records**: `tool_patches` table tracks error → patch → resulting_tool relationships
-- **Tool Code**: Stored as .py files on disk, indexed by content hash (deduplication)
-- **Cache Data**: Parquet snapshots in `data/cache/` for reproducible data access
+- Tool metadata: SQLite database (5 tables: ToolArtifact, ExecutionTrace, ErrorReport, ToolPatch, BatchMergeRecord)
+- Tool code: Filesystem (`data/artifacts/generated/{name}_v{version}_{hash8}.py`)
+- Data cache: Parquet files (`data/cache/{md5}.parquet`)
+- Execution state: Stateless (each task execution creates new trace)
 
 ## Key Abstractions
 
 **ToolArtifact:**
-- Purpose: Represents a registered tool (metadata + code content)
-- Examples: `ToolArtifact(name="calc_rsi", semantic_version="0.1.0", code_content="...", status=PROVISIONAL)`
-- Pattern: SQLModel table with denormalized code_content (convenience) and file_path pointer (separation of concerns)
+- Purpose: Represents a registered tool with metadata
+- Examples: `data/artifacts/generated/calc_rsi_v0.1.0_a5a0e879.py`, `data/artifacts/bootstrap/get_stock_hist_v0.1.0_*.py`
+- Pattern: SQLModel with file pointer (code_content redundant for convenience)
+- Fields: name, version, content_hash, file_path, permissions, status, category, capabilities, contract_id, verification_stage
+
+**ToolContract:**
+- Purpose: Defines input/output constraints for task validation
+- Examples: `calc_rsi` (output: 0-100), `fetch_price` (output: numeric ≥ 0), `calc_bollinger` (output: dict with upper/middle/lower)
+- Pattern: Dataclass with input types, output type, constraints
+- Used by: MultiStageVerifier for contract validation stage
+
+**ToolCapability:**
+- Purpose: Defines what operations a tool category can perform
+- Examples: CALCULATE (pandas/numpy only), FETCH (yfinance allowed), NETWORK_READ (yfinance allowed)
+- Pattern: Enum with module mappings
+- Used by: AST security checker to enforce capability-based import rules
 
 **ExecutionTrace:**
-- Purpose: Records a single tool execution (inputs, outputs, errors, timing)
-- Examples: `ExecutionTrace(trace_id="task_calc_rsi_abc123", tool_id=5, input_args={...}, exit_code=0, std_out="RSI: 45.2")`
-- Pattern: Foreign key to tool_artifacts, timestamped, includes full stderr for error analysis
+- Purpose: Records execution context for debugging and refinement
+- Examples: Trace for successful RSI calculation, trace for failed MACD with error
+- Pattern: SQLModel with input snapshot, output, stdout/stderr, timing
+- Used by: Refiner for error analysis, evaluation suite for metrics
 
-**Security Abstraction (ToolExecutor):**
-- Purpose: Enforce security guarantees without runtime overhead
-- Pattern:
-  - BANNED_MODULES = {os, sys, subprocess, ...} - strict allowlist approach
-  - BANNED_CALLS = {eval, exec, compile, ...}
-  - ALLOWED_MODULES = {pandas, numpy, math, ...}
-  - Static check via AST walk before execution
-  - Runtime: subprocess isolation with JSON file exchange (no eval)
-
-**Tool Evolution Abstraction (Synthesizer + Refiner):**
-- Purpose: Encapsulate the generate-verify-register-refine loop
-- Pattern:
-  - Synthesizer: Stateless generator, delegates to LLM → Executor → Registry
-  - Refiner: Stateful error handler, analyzes execution traces and generates patches
-  - Error classification via regex patterns (ERROR_PATTERNS dict)
-  - Deterministic retry logic (max 3 attempts)
+**MultiStageVerifier:**
+- Purpose: Progressive verification pipeline ensuring tool quality
+- Examples: Verification report showing tool passed AST+self-test but failed contract
+- Pattern: Strategy pattern with stage results (PASS/FAIL/SKIP)
+- Used by: Synthesizer during tool registration
 
 ## Entry Points
 
 **CLI Entry Point:**
-- Location: `main.py`
-- Triggers: `python main.py --task "..."`, `--init`, `--bootstrap`, `--list`, `--security-check`
-- Responsibilities:
-  - Initialize database and tables
-  - Register bootstrap tools (5 initial yfinance tools)
-  - Handle task execution with tool synthesis/retrieval
-  - List registered tools
-  - Verify security mechanisms
+- Location: `fin_evo_agent/main.py`
+- Triggers: Command-line invocation (`python main.py --task "..."`)
+- Responsibilities: Parse args, dispatch to command handlers, display results
 
-**Programmatic Entry Points:**
-- `ToolRegistry.register()`: Register a new tool artifact
-- `Synthesizer.synthesize()`: Generate and verify a tool from task description
-- `Refiner.refine()`: Attempt to fix a failed tool via error analysis
-- `ToolExecutor.execute()`: Run tool code in secure sandbox
+**Evaluation Entry Point:**
+- Location: `fin_evo_agent/benchmarks/run_eval.py`
+- Triggers: Benchmark execution (`python benchmarks/run_eval.py --agent evolving`)
+- Responsibilities: Load tasks.jsonl, execute each task, compute metrics, save results
+
+**Database Initialization:**
+- Location: `src/core/models.py::init_db()`
+- Triggers: `python main.py --init` or first import
+- Responsibilities: Create 5 SQLModel tables, run migrations for new schema fields
+
+**Bootstrap Tool Creation:**
+- Location: `src/finance/bootstrap.py::create_bootstrap_tools()`
+- Triggers: `python main.py --bootstrap`
+- Responsibilities: Register 5 atomic yfinance tools (get_stock_hist, get_financial_info, get_spot_price, get_index_daily, get_etf_hist)
 
 ## Error Handling
 
-**Strategy:** Layered error detection with LLM-assisted analysis and automatic retry
+**Strategy:** Multi-level with progressive refinement
 
 **Patterns:**
-
-1. **Security Errors** (ToolExecutor.static_check):
-   - AST analysis finds banned imports/calls
-   - Raises SecurityException (synthesis fails immediately)
-   - No retry (security issues are fatal)
-
-2. **Syntax Errors** (ToolExecutor.static_check):
-   - ast.parse() fails
-   - Synthesis fails with error message in ExecutionTrace.std_err
-   - Refiner attempts patch based on SyntaxError message
-
-3. **Execution Errors** (ToolExecutor.execute):
-   - Subprocess exits with non-zero code
-   - ExecutionTrace captures stderr
-   - ErrorReport created with LLM-analyzed root_cause
-   - Refiner.ERROR_PATTERNS classifies (TypeError, KeyError, etc.)
-   - Refiner generates patched code and retries (max 3 attempts)
-
-4. **Timeout Errors** (ToolExecutor.execute):
-   - Subprocess exceeds EXECUTION_TIMEOUT_SEC (30s)
-   - ExecutionTrace.exit_code = -9 (SIGKILL)
-   - Treated as execution error, routed to Refiner
-
-5. **LLM Errors** (LLMAdapter):
-   - API timeout (60s per request)
-   - Falls back to mock response if API_KEY not set
-   - Result includes code_payload="" on failure
-   - Synthesizer checks `if not result["code_payload"]:` and fails gracefully
+- **AST Security Check:** Fails immediately with SecurityException if banned modules/calls detected → logged to `data/logs/security_violations.log`
+- **Execution Sandbox:** Subprocess timeout (30s) returns non-zero exit code → captured in ExecutionTrace.std_err
+- **Verification Failure:** Returns VerificationReport with failed stage → triggers Refiner if enabled
+- **Network Failure:** Retry with exponential backoff (3 attempts, 1-10s delay) → raises RuntimeError after exhaustion
+- **LLM Failure:** Returns empty code_payload → synthesis returns (None, error_trace)
 
 ## Cross-Cutting Concerns
 
 **Logging:**
-- Approach: Print statements to stdout (no structured logging framework)
-- Patterns:
-  - `print("[Step N] ...")` in main.py task flow
-  - `print("[Synthesizer] ...")` in synthesizer.py
-  - `print(f"[Network] Fetching {func_name}...")` in data_proxy.py
-  - No log rotation or levels
+- Thinking process logs: `data/logs/thinking_process_{timestamp}.txt` (from LLM adapter)
+- Security violations: `data/logs/security_violations.log` (from executor)
+- Network retry: Printed to stdout (from data_proxy)
 
 **Validation:**
-- Approach: Explicit checks in each component
-- Patterns:
-  - ToolExecutor.static_check(): Validate imports and function calls via AST
-  - Refiner.ERROR_PATTERNS: Validate error classification via regex
-  - ToolArtifact schema validation via SQLModel (type hints)
-  - Input args validation in bootstrap tool templates
+- Input validation: AST security check with capability-based rules
+- Output validation: Contract-based constraints (type, range, required keys)
+- Data validation: Type coercion for cached parquet data
 
 **Authentication:**
-- Approach: API key from environment variable
-- Patterns:
-  - LLM: `API_KEY` env var → OpenAI client initialization
-  - yfinance: No auth required (public market data)
-  - Database: SQLite (file-based, no auth)
-
-**Permissions Model:**
-- Approach: Declarative permission list on ToolArtifact
-- Patterns:
-  - Permission enum: CALC_ONLY, NETWORK_READ, FILE_WRITE
-  - Default: [CALC_ONLY] for all tools
-  - Bootstrap tools marked: [NETWORK_READ, FILE_WRITE] for caching
-  - Stored in permissions JSON field
-  - Not currently enforced at runtime (Phase 1a)
+- Not applicable (single-user local system)
+- LLM API key: Environment variable `API_KEY` loaded from `.env`
 
 ---
 
-*Architecture analysis: 2026-01-31*
+*Architecture analysis: 2026-02-03*
