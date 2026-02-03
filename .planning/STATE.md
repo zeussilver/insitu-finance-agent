@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-31)
 ## Current Position
 
 Phase: 5 of 5 (Verification Gap Closure)
-Plan: 1 of 3 complete in current phase
-Status: In progress - 05-01 complete (security AST expansion)
-Last activity: 2026-02-03 - Completed 05-01-PLAN.md (security improvements)
+Plan: 3 of 6 complete in current phase (05-01, 05-02, 05-03)
+Status: In progress - Wave 2 complete
+Last activity: 2026-02-03 - Completed 05-03-PLAN.md (schema matching)
 
-Progress: [████████░░] 80%
+Progress: [████████░░] 85%
 
 ## Phase 4 Verification Results
 
@@ -34,9 +34,9 @@ Progress: [████████░░] 80%
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
-- Average duration: 2m 30s
-- Total execution time: ~0.33 hours
+- Total plans completed: 10
+- Average duration: 2m 22s
+- Total execution time: ~0.40 hours
 
 **By Phase:**
 
@@ -46,7 +46,7 @@ Progress: [████████░░] 80%
 | 02-prompt-engineering | 1/1 | 1m 49s | 1m 49s |
 | 03-refiner-pipeline | 2/2 | 4m 44s | 2m 22s |
 | 04-regression-verification | 2/2 | ~9m | ~4m 30s |
-| 05-verification-gap-closure | 1/3 | 6m | 6m |
+| 05-verification-gap-closure | 3/6 | ~8m | ~2m 40s |
 
 *Updated after each plan completion*
 
@@ -80,6 +80,9 @@ Recent decisions affecting current work:
 - [05-01]: Add BANNED_ATTRIBUTES as separate set from BANNED_CALLS for magic attribute blocking
 - [05-01]: Check string literals for banned patterns (catches getattr(x, 'eval'))
 - [05-01]: Defense in depth: LLM prompt warnings + AST enforcement
+- [05-03]: Separate find_by_schema() method rather than modifying get_by_name()
+- [05-03]: update_schema() called after registration (not passed to register())
+- [05-03]: INDICATOR_KEYWORDS dict at module level for reuse
 
 ### Pending Todos
 
@@ -89,14 +92,14 @@ None.
 
 **Phase 5 progress:**
 1. [DONE - 05-01] Security AST check improvements (60-100% block rate, up from 20%)
-2. [PENDING - 05-02] Fetch task pattern (allow yfinance calls in generated tools for fetch tasks)
-3. [PENDING - 05-03] Tool matching improvements in run_eval.py
-4. [DONE - 05-01] pathlib removed from ALLOWED_MODULES
+2. [DONE - 05-02] Schema fields added to ToolArtifact model
+3. [DONE - 05-03] Schema-based tool matching in registry and synthesizer
+4. [PENDING - 05-04] Additional plans may follow
 
 ## Session Continuity
 
-Last session: 2026-02-03T04:56:32Z
-Stopped at: Completed 05-01-PLAN.md (security AST expansion)
+Last session: 2026-02-03T05:01:18Z
+Stopped at: Completed 05-03-PLAN.md (schema matching)
 Resume file: None
 
 ## Phase 5 Plans
@@ -104,8 +107,9 @@ Resume file: None
 | Plan | Wave | Files | Status |
 |------|------|-------|--------|
 | 05-01 | 1 | executor.py, llm_adapter.py | Complete (2026-02-03) |
-| 05-02 | 1 | synthesizer.py | Pending |
-| 05-03 | 2 | run_eval.py | Pending |
+| 05-02 | 1 | models.py | Complete (2026-02-03) |
+| 05-03 | 2 | registry.py, synthesizer.py | Complete (2026-02-03) |
+| 05-04+ | 3 | TBD | Pending |
 
 ## Phase 5 Completed Enhancements
 
@@ -118,3 +122,16 @@ Resume file: None
 - Removed pathlib from ALLOWED_MODULES
 - Added SECURITY REQUIREMENTS section to LLM SYSTEM_PROMPT
 - Security block rate improved from 20% to 60-100%
+
+**05-02: Schema Fields (2026-02-03)**
+- Added category, indicator, data_type, input_requirements fields to ToolArtifact
+- Added migration function for existing databases
+- Enables schema-based tool matching
+
+**05-03: Schema Matching (2026-02-03)**
+- Added find_by_schema() method to ToolRegistry
+- Added update_schema() method to modify schema fields
+- Added INDICATOR_KEYWORDS dict with 10 indicator types
+- Added extract_indicator() and extract_data_type() functions
+- Integrated schema extraction into synthesize() method
+- Tools now automatically get schema metadata on registration
