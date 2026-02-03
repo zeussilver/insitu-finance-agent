@@ -59,6 +59,17 @@ class ToolArtifact(SQLModel, table=True):
     parent_tool_ids: List[int] = Field(default=[], sa_column=Column(JSON))
     test_cases: List[Dict] = Field(default=[], sa_column=Column(JSON))
 
+    # --- Structured matching fields (Phase 5) ---
+    # These fields enable schema-based tool matching instead of keyword matching
+    category: Optional[str] = Field(default=None, index=True,
+        description="Task category: 'fetch', 'calculation', 'composite'")
+    indicator: Optional[str] = Field(default=None, index=True,
+        description="Technical indicator: 'rsi', 'macd', 'bollinger', 'kdj', etc.")
+    data_type: Optional[str] = Field(default=None,
+        description="Data type: 'price', 'financial', 'volume', 'ohlcv'")
+    input_requirements: List[str] = Field(default=[], sa_column=Column(JSON),
+        description="Required input fields: ['prices', 'period'], ['symbol', 'start', 'end']")
+
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
