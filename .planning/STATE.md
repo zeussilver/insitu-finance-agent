@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-31)
 
 **Core value:** Benchmark task success rate >= 80%
-**Current focus:** Phase 5 - Gap Closure Plans 07-09 (symbol extraction, code templates, test improvements)
+**Current focus:** Phase 5 - Gap Closure Plans 07-09 (symbol extraction, simple fetch, test improvements)
 
 ## Current Position
 
 Phase: 5 of 5 (Verification Gap Closure)
-Plan: 7 of 9 complete in current phase (05-01 through 05-07)
+Plan: 8 of 9 complete in current phase (05-01 through 05-08)
 Status: In progress
-Last activity: 2026-02-03 - Completed 05-07-PLAN.md (Symbol Extraction Fix)
+Last activity: 2026-02-03 - Completed 05-08-PLAN.md (Simple Fetch Query Handling)
 
-Progress: [████████░░] 78% (7/9 plans)
+Progress: [█████████░] 89% (8/9 plans)
 
 ## Phase 4 Verification Results
 
@@ -34,9 +34,9 @@ Progress: [████████░░] 78% (7/9 plans)
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 13
-- Average duration: 2m 10s
-- Total execution time: ~0.47 hours
+- Total plans completed: 14
+- Average duration: 2m 8s
+- Total execution time: ~0.50 hours
 
 **By Phase:**
 
@@ -46,7 +46,7 @@ Progress: [████████░░] 78% (7/9 plans)
 | 02-prompt-engineering | 1/1 | 1m 49s | 1m 49s |
 | 03-refiner-pipeline | 2/2 | 4m 44s | 2m 22s |
 | 04-regression-verification | 2/2 | ~9m | ~4m 30s |
-| 05-verification-gap-closure | 7/9 | ~16m | ~2m 17s |
+| 05-verification-gap-closure | 8/9 | ~18m | ~2m 15s |
 
 *Updated after each plan completion*
 
@@ -96,10 +96,13 @@ Recent decisions affecting current work:
 - [05-07]: INDEX_SYMBOL_MAPPING supports multiple name variants (S&P 500, SP500, S&P500)
 - [05-07]: Extraction order: index names -> known tickers -> regex (avoids GET matching before SPY)
 - [05-07]: Extended known tickers list to include common ETFs (SPY, QQQ, etc.)
+- [05-08]: Simple fetch patterns checked at orchestration layer (not in tools)
+- [05-08]: Highest/lowest patterns checked before latest to handle specificity
+- [05-08]: Chinese variants supported for all pattern types
+- [05-08]: Unsupported queries raise ValueError with clear message
 
 ### Pending Todos
 
-- 05-08: Code template improvements
 - 05-09: Test improvements
 
 ### Blockers/Concerns
@@ -108,8 +111,8 @@ None - continuing with gap closure plans.
 
 ## Session Continuity
 
-Last session: 2026-02-03T05:39:30Z
-Stopped at: Completed 05-07-PLAN.md (Symbol Extraction Fix)
+Last session: 2026-02-03T05:40:04Z
+Stopped at: Completed 05-08-PLAN.md (Simple Fetch Query Handling)
 Resume file: None
 
 ## Phase 5 Plans
@@ -123,7 +126,7 @@ Resume file: None
 | 05-05 | 3 | benchmarks/run_eval.py | Complete (2026-02-03) |
 | 05-06 | 4 | .github/workflows/benchmark.yml | Complete (2026-02-03) |
 | 05-07 | 1 | src/core/task_executor.py | Complete (2026-02-03) |
-| 05-08 | 1 | TBD | Pending |
+| 05-08 | 1 | src/core/task_executor.py | Complete (2026-02-03) |
 | 05-09 | 1 | TBD | Pending |
 
 ## Phase 5 Completed Enhancements
@@ -183,3 +186,11 @@ Resume file: None
 - Reordered extract_symbol() logic: index names -> known tickers -> regex with exclusions
 - Extended known tickers list to include common ETFs (SPY, QQQ, etc.)
 - Fixed fetch_004 (S&P 500 -> ^GSPC) and fetch_005 (SPY, not GET) regressions
+
+**05-08: Simple Fetch Query Handling (2026-02-03)**
+- Added SIMPLE_FETCH_PATTERNS for latest/highest/lowest close queries
+- Added UNSUPPORTED_FETCH_PATTERNS for financial data queries
+- Added _handle_simple_fetch() method for direct OHLCV data extraction
+- Modified execute_task() to try simple fetch before tool execution
+- Support Chinese variants (收盘价, 最高收盘价, 最低收盘价)
+- Simple queries like "Get SPY latest close price" now work without tool execution
