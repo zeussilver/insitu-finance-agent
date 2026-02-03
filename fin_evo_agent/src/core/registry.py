@@ -166,6 +166,71 @@ class ToolRegistry:
         """
         return []
 
+    def find_by_schema(
+        self,
+        category: Optional[str] = None,
+        indicator: Optional[str] = None,
+        data_type: Optional[str] = None,
+        status: ToolStatus = ToolStatus.PROVISIONAL
+    ) -> Optional[ToolArtifact]:
+        """
+        Find tool by structured schema fields.
+
+        This replaces keyword-based matching with precise field matching.
+        Returns the latest version if multiple matches exist.
+
+        Args:
+            category: Task category ('fetch', 'calculation', 'composite')
+            indicator: Technical indicator ('rsi', 'macd', 'bollinger', etc.)
+            data_type: Data type ('price', 'financial', 'volume')
+            status: Tool status filter (default: PROVISIONAL)
+
+        Returns:
+            ToolArtifact if found, None otherwise
+        """
+        with Session(self.engine) as session:
+            query = select(ToolArtifact).where(ToolArtifact.status == status)
+
+            if category:
+                query = query.where(ToolArtifact.category == category)
+            if indicator:
+                query = query.where(ToolArtifact.indicator == indicator)
+            if data_type:
+                query = query.where(ToolArtifact.data_type == data_type)
+
+            results = list(session.exec(query).all())
+
+            if not results:
+                return None
+
+            # Return latest version if multiple matches
+            return max(results, key=lambda t: t.semantic_version)
+
+    def update_schema(
+        self,
+        tool_id: int,
+        category: str = None,
+        indicator: str = None,
+        data_type: str = None,
+        input_requirements: List[str] = None
+    ) -> Optional[ToolArtifact]:
+        """Update schema fields for an existing tool."""
+        with Session(self.engine) as session:
+            tool = session.get(ToolArtifact, tool_id)
+            if tool:
+                if category is not None:
+                    tool.category = category
+                if indicator is not None:
+                    tool.indicator = indicator
+                if data_type is not None:
+                    tool.data_type = data_type
+                if input_requirements is not None:
+                    tool.input_requirements = input_requirements
+                session.add(tool)
+                session.commit()
+                session.refresh(tool)
+            return tool
+
 
 if __name__ == "__main__":
     # Test the registry
