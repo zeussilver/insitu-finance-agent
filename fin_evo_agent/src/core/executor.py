@@ -64,7 +64,8 @@ class ToolExecutor:
     ALLOWED_MODULES = {
         'pandas', 'numpy', 'datetime', 'json',
         'math', 'decimal', 'collections', 're',
-        'yfinance', 'typing', 'hashlib'
+        'yfinance', 'typing', 'hashlib', 'warnings',
+        'urllib3'  # Allow warning suppression (yfinance dependency)
     }
 
     def _normalize_encoding(self, code: str) -> str:
@@ -102,6 +103,48 @@ class ToolExecutor:
         Returns:
             (is_safe, error_message) - error_message is None if safe
         """
+        return self.static_check_with_rules(code)
+
+    def static_check_with_rules(
+        self,
+        code: str,
+        allowed_modules: set = None,
+        banned_modules: set = None,
+        banned_calls: set = None,
+        banned_attributes: set = None
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Perform AST static security analysis with custom rules.
+
+        This method supports capability-based checking where different tool
+        categories have different allowed/banned modules.
+
+        Args:
+            code: Python source code to check
+            allowed_modules: Set of allowed module names (None uses default)
+            banned_modules: Additional modules to ban (merged with default)
+            banned_calls: Additional calls to ban (merged with default)
+            banned_attributes: Additional attributes to ban (merged with default)
+
+        Returns:
+            (is_safe, error_message) - error_message is None if safe
+        """
+        # Use defaults if not specified
+        if allowed_modules is None:
+            allowed_modules = self.ALLOWED_MODULES
+        if banned_modules is None:
+            banned_modules = self.BANNED_MODULES
+        else:
+            banned_modules = self.BANNED_MODULES | banned_modules
+        if banned_calls is None:
+            banned_calls = self.BANNED_CALLS
+        else:
+            banned_calls = self.BANNED_CALLS | banned_calls
+        if banned_attributes is None:
+            banned_attributes = self.BANNED_ATTRIBUTES
+        else:
+            banned_attributes = self.BANNED_ATTRIBUTES | banned_attributes
+
         # Normalize encoding to prevent PEP-263 bypass
         code = self._normalize_encoding(code)
 
@@ -115,37 +158,37 @@ class ToolExecutor:
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     module = alias.name.split('.')[0]
-                    if module in self.BANNED_MODULES:
+                    if module in banned_modules:
                         return False, f"Banned import: {module}"
-                    if module not in self.ALLOWED_MODULES:
+                    if module not in allowed_modules:
                         return False, f"Unallowed import: {module}"
 
             elif isinstance(node, ast.ImportFrom):
                 if node.module:
                     module = node.module.split('.')[0]
-                    if module in self.BANNED_MODULES:
+                    if module in banned_modules:
                         return False, f"Banned import from: {module}"
-                    if module not in self.ALLOWED_MODULES:
+                    if module not in allowed_modules:
                         return False, f"Unallowed import from: {module}"
 
             # Check function calls
             elif isinstance(node, ast.Call):
                 if isinstance(node.func, ast.Name):
-                    if node.func.id in self.BANNED_CALLS:
+                    if node.func.id in banned_calls:
                         return False, f"Banned call: {node.func.id}"
                 # Check for banned method calls on objects (e.g., obj.__class__)
                 elif isinstance(node.func, ast.Attribute):
-                    if node.func.attr in self.BANNED_CALLS:
+                    if node.func.attr in banned_calls:
                         return False, f"Banned method call: {node.func.attr}"
 
-            # Check magic attributes - use BANNED_ATTRIBUTES set
+            # Check magic attributes - use banned_attributes set
             elif isinstance(node, ast.Attribute):
-                if node.attr in self.BANNED_ATTRIBUTES:
+                if node.attr in banned_attributes:
                     return False, f"Banned attribute access: {node.attr}"
 
             # Check string literals for banned patterns (catches getattr(obj, 'eval'))
             elif isinstance(node, ast.Constant) and isinstance(node.value, str):
-                for banned in self.BANNED_CALLS | self.BANNED_ATTRIBUTES:
+                for banned in banned_calls | banned_attributes:
                     if banned in node.value:
                         return False, f"Suspicious string literal containing: {banned}"
 

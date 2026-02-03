@@ -15,8 +15,10 @@ sys.path.insert(0, str(__file__).rsplit("/", 3)[0])
 from src.config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, LLM_TEMPERATURE, LLM_ENABLE_THINKING
 
 
-# System prompt for tool generation
-SYSTEM_PROMPT = """You are a financial tool generator. Generate Python functions that:
+# === Category-Specific System Prompts ===
+
+# Default/Calculation prompt - for pure computation tools
+CALCULATE_SYSTEM_PROMPT = """You are a financial calculation tool generator. Generate Python functions that:
 
 1. Include complete type hints (e.g., `prices: list`, `period: int = 14`, `-> float`)
 2. Include a comprehensive docstring with Args and Returns sections
@@ -30,9 +32,21 @@ Output format:
 1. First, explain your reasoning inside <think>...</think> tags
 2. Then provide the code inside ```python...``` code block
 
+IMPORTANT - Parameter Naming Convention (MUST follow exactly):
+- For single price series: use `prices` (list of floats)
+- For OHLCV data: use `high`, `low`, `close`, `volume` (each a list of floats)
+- For correlation: use `prices1` and `prices2` (both lists of floats)
+- For period/window parameters: use `period` or `window` (int)
+- Do NOT use custom names like `aapl_prices`, `stock_prices`, `data`, etc.
+
+For dict outputs (like KDJ, Bollinger, MACD), use lowercase keys:
+- KDJ: {'k': ..., 'd': ..., 'j': ...} NOT {'K': ..., 'D': ..., 'J': ...}
+- Bollinger: {'upper': ..., 'middle': ..., 'lower': ...}
+- MACD: {'macd': ..., 'signal': ..., 'histogram': ...}
+
 IMPORTANT:
 - Allowed imports: pandas, numpy, datetime, json, math, decimal, collections, re, typing
-- FORBIDDEN inside generated tools: yfinance, akshare, talib, requests, urllib
+- FORBIDDEN inside generated tools: yfinance, akshare, talib, requests, urllib, httpx, aiohttp
 - Never use: os, sys, subprocess, shutil, eval, exec, compile
 - Function names should be GENERIC (e.g., `calc_rsi`, not `calc_aapl_rsi`)
 - Test data must be INLINE hardcoded lists, NOT fetched from APIs
@@ -41,11 +55,9 @@ SECURITY REQUIREMENTS (violations will be BLOCKED and task will FAIL):
 - NEVER use: os, sys, subprocess, shutil, builtins, socket, ctypes, pickle
 - NEVER call: eval, exec, compile, __import__, getattr, setattr, delattr, open, hasattr
 - NEVER access: __class__, __bases__, __subclasses__, __dict__, __globals__, __builtins__
-- NEVER use object introspection chains like obj.__class__.__bases__
-- NEVER use encoding tricks or obfuscation to bypass security checks
-- Code with these patterns will be automatically rejected and the task will fail
+- Code with these patterns will be automatically rejected
 
-EXAMPLE of correct pattern:
+EXAMPLE of correct calculation pattern:
 ```python
 import pandas as pd
 import numpy as np
@@ -77,8 +89,178 @@ if __name__ == "__main__":
     test_prices = [44, 44.5, 44.25, 43.75, 44.5, 44.25, 44.5, 45, 45.5, 46]
     result = calc_rsi(test_prices, 5)
     assert 0 <= result <= 100
+    print("Test passed!")
 ```
 """
+
+
+# Fetch prompt - for tools that fetch data from yfinance
+FETCH_SYSTEM_PROMPT = """You are a financial data fetcher tool generator. Generate Python functions that:
+
+1. Use yfinance to fetch real market data
+2. Include complete type hints and comprehensive docstring
+3. Return structured data: pandas DataFrame, float, or dict
+4. Handle errors gracefully (network issues, invalid symbols)
+5. Include 2 assert tests in `if __name__ == '__main__':` block
+
+Output format:
+1. First, explain your reasoning inside <think>...</think> tags
+2. Then provide the code inside ```python...``` code block
+
+IMPORTANT:
+- Allowed imports: pandas, numpy, datetime, json, yfinance, hashlib, typing
+- FORBIDDEN: os, sys, subprocess, shutil, eval, exec, compile, urllib3, requests, aiohttp, httpx
+- For warning suppression (e.g., yfinance SSL warnings), use: import warnings; warnings.filterwarnings('ignore')
+- Handle edge cases: invalid symbols, empty data, network timeouts
+- Return clear error indicators (None, empty DataFrame) rather than raising exceptions
+
+SECURITY REQUIREMENTS (violations will be BLOCKED and task will FAIL):
+- NEVER use: os, sys, subprocess, shutil, builtins, socket, ctypes, pickle
+- NEVER call: eval, exec, compile, __import__, getattr, setattr, delattr, open, hasattr
+- NEVER access: __class__, __bases__, __subclasses__, __dict__, __globals__, __builtins__
+- Code with these patterns will be automatically rejected
+
+EXAMPLE of correct fetch pattern:
+```python
+import yfinance as yf
+import pandas as pd
+from typing import Optional
+
+def get_stock_hist(symbol: str, start: str, end: str) -> Optional[pd.DataFrame]:
+    \"\"\"Fetch stock historical OHLCV data.
+
+    Args:
+        symbol: Stock ticker symbol (e.g., 'AAPL')
+        start: Start date in YYYY-MM-DD format
+        end: End date in YYYY-MM-DD format
+
+    Returns:
+        DataFrame with Date, Open, High, Low, Close, Volume columns
+        None if fetch fails
+    \"\"\"
+    try:
+        ticker = yf.Ticker(symbol)
+        df = ticker.history(start=start, end=end)
+        if df.empty:
+            return None
+        df = df.reset_index()
+        df = df.rename(columns={'index': 'Date'})
+        return df[['Date', 'Open', 'High', 'Low', 'Close', 'Volume']]
+    except Exception:
+        return None
+
+if __name__ == "__main__":
+    # Test with a known symbol
+    df = get_stock_hist('AAPL', '2023-01-01', '2023-01-10')
+    assert df is not None, "Should return data for valid symbol"
+    assert 'Close' in df.columns, "Should have Close column"
+    print("Test passed!")
+```
+"""
+
+
+# Composite prompt - for tools combining multiple operations
+COMPOSITE_SYSTEM_PROMPT = """You are a financial composite tool generator. Generate Python functions that:
+
+1. Combine multiple calculations or conditions
+2. Accept all necessary data as function ARGUMENTS (prices, volumes, etc.)
+3. Do NOT call yfinance - all data is passed IN as arguments
+4. Return clear results: bool for conditions, float/dict for calculations
+5. Include type hints and comprehensive docstring
+6. Include 2 assert tests in `if __name__ == '__main__':` block
+
+Output format:
+1. First, explain your reasoning inside <think>...</think> tags
+2. Then provide the code inside ```python...``` code block
+
+IMPORTANT - Parameter Naming Convention (MUST follow exactly):
+- For price data: use `prices` (list of floats)
+- For volume data: use `volumes` (list of floats) - note the 's'
+- For multiple price series: use `prices1`, `prices2`, `prices3` etc.
+- For portfolio tasks: accept a dict parameter `symbol_prices` mapping symbol to price list
+- Do NOT use symbol-specific names like `aapl_prices`, `msft_prices`
+
+For dict outputs, use lowercase keys:
+- Example: {'k': ..., 'd': ..., 'j': ...} NOT {'K': ..., 'D': ..., 'J': ...}
+
+IMPORTANT:
+- Allowed imports: pandas, numpy, datetime, json, math, decimal, collections, re, typing
+- FORBIDDEN: yfinance, akshare, talib, requests, urllib, os, sys, subprocess
+- For condition-based tools, return True/False explicitly
+- For multi-step calculations, document each step clearly
+
+SECURITY REQUIREMENTS (violations will be BLOCKED and task will FAIL):
+- NEVER use: os, sys, subprocess, shutil, builtins, socket, ctypes, pickle
+- NEVER call: eval, exec, compile, __import__, getattr, setattr, delattr, open, hasattr
+- NEVER access: __class__, __bases__, __subclasses__, __dict__, __globals__, __builtins__
+- Code with these patterns will be automatically rejected
+
+EXAMPLE of correct composite pattern:
+```python
+import pandas as pd
+import numpy as np
+
+def check_ma_crossover_with_rsi(
+    prices: list,
+    short_window: int = 5,
+    long_window: int = 20,
+    rsi_period: int = 14,
+    rsi_threshold: float = 30
+) -> bool:
+    \"\"\"Check if MA5>MA20 and RSI<threshold (buy signal).
+
+    Args:
+        prices: List of closing prices
+        short_window: Short MA period (default 5)
+        long_window: Long MA period (default 20)
+        rsi_period: RSI calculation period (default 14)
+        rsi_threshold: RSI threshold for oversold (default 30)
+
+    Returns:
+        True if MA5>MA20 and RSI<threshold, False otherwise
+    \"\"\"
+    if len(prices) < max(long_window, rsi_period + 1):
+        return False
+
+    s = pd.Series(prices)
+
+    # Calculate MAs
+    ma_short = s.rolling(window=short_window).mean().iloc[-1]
+    ma_long = s.rolling(window=long_window).mean().iloc[-1]
+
+    # Calculate RSI
+    delta = s.diff()
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    avg_gain = gain.rolling(window=rsi_period).mean().iloc[-1]
+    avg_loss = loss.rolling(window=rsi_period).mean().iloc[-1]
+    if avg_loss == 0:
+        rsi = 100.0
+    else:
+        rs = avg_gain / avg_loss
+        rsi = 100 - (100 / (1 + rs))
+
+    return ma_short > ma_long and rsi < rsi_threshold
+
+if __name__ == "__main__":
+    # Test case 1: Uptrend with low RSI
+    prices = [100, 99, 98, 97, 96, 95, 94, 93, 92, 91, 90, 89, 88, 87, 86, 85, 84, 83, 82, 85, 88, 91]
+    result = check_ma_crossover_with_rsi(prices, 5, 20, 14, 30)
+    assert isinstance(result, bool), "Should return boolean"
+    print("Test passed!")
+```
+"""
+
+
+# Mapping from category to prompt
+PROMPT_BY_CATEGORY = {
+    'fetch': FETCH_SYSTEM_PROMPT,
+    'calculation': CALCULATE_SYSTEM_PROMPT,
+    'composite': COMPOSITE_SYSTEM_PROMPT,
+}
+
+# Default system prompt (for backward compatibility)
+SYSTEM_PROMPT = CALCULATE_SYSTEM_PROMPT
 
 
 class LLMAdapter:
@@ -139,7 +321,8 @@ class LLMAdapter:
     def generate_tool_code(
         self,
         task: str,
-        error_context: Optional[str] = None
+        error_context: Optional[str] = None,
+        category: Optional[str] = None
     ) -> dict:
         """
         Generate tool code using Qwen3.
@@ -147,14 +330,35 @@ class LLMAdapter:
         Args:
             task: Task description (e.g., "计算 RSI 指标")
             error_context: Previous error traceback for refinement
+            category: Tool category ('fetch', 'calculation', 'composite')
+                      Used to select appropriate system prompt
 
         Returns:
             {
                 "thought_trace": str,
                 "code_payload": str,
-                "raw_response": str
+                "raw_response": str,
+                "category": str
             }
         """
+        # Select appropriate system prompt based on category
+        if category and category in PROMPT_BY_CATEGORY:
+            system_prompt = PROMPT_BY_CATEGORY[category]
+        else:
+            # Infer category from task keywords
+            task_lower = task.lower()
+            if any(kw in task_lower for kw in ['fetch', 'get', '获取', '查询', 'price', 'quote']):
+                if any(kw in task_lower for kw in ['calculate', 'calc', '计算', 'rsi', 'macd', 'bollinger']):
+                    # Calculation task that needs data - use calculation prompt
+                    category = 'calculation'
+                else:
+                    category = 'fetch'
+            elif any(kw in task_lower for kw in ['if ', 'return true', 'return false', 'signal', 'divergence', 'portfolio']):
+                category = 'composite'
+            else:
+                category = 'calculation'
+            system_prompt = PROMPT_BY_CATEGORY.get(category, SYSTEM_PROMPT)
+
         # Build user prompt
         user_prompt = f"Task: {task}"
         if error_context:
@@ -162,13 +366,13 @@ class LLMAdapter:
 
         if self.client is None:
             # Mock only when no API key configured (testing mode)
-            raw_response = self._mock_generate(task)
+            raw_response = self._mock_generate(task, category)
         else:
             try:
                 completion = self.client.chat.completions.create(
                     model=self.model,
                     messages=[
-                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt}
                     ],
                     temperature=self.temperature,
@@ -182,7 +386,8 @@ class LLMAdapter:
                     "thought_trace": "",
                     "code_payload": None,
                     "text_response": f"LLM API Error: {e}",
-                    "raw_response": f"LLM API Error: {e}"
+                    "raw_response": f"LLM API Error: {e}",
+                    "category": category
                 }
 
         parsed = self._clean_protocol(raw_response)
@@ -190,11 +395,99 @@ class LLMAdapter:
             "thought_trace": parsed["thought_trace"],
             "code_payload": parsed["code_payload"],
             "text_response": parsed["text_response"],
-            "raw_response": raw_response
+            "raw_response": raw_response,
+            "category": category
         }
 
-    def _mock_generate(self, task: str) -> str:
+    def _mock_generate(self, task: str, category: str = None) -> str:
         """Mock LLM response for testing without API key."""
+        task_lower = task.lower()
+
+        # Mock for fetch tasks
+        if category == 'fetch' or any(kw in task_lower for kw in ['fetch', 'get stock', 'get etf', 'get index', 'close price']):
+            return '''<think>
+用户需要获取股票数据。我将使用 yfinance 来获取历史数据。
+需要处理网络错误和空数据情况。
+</think>
+
+好的，这是获取股票数据的工具。
+
+```python
+import yfinance as yf
+import pandas as pd
+from typing import Optional
+
+def get_stock_hist(symbol: str, start: str = "2023-01-01", end: str = "2023-12-31") -> Optional[pd.DataFrame]:
+    """
+    获取股票历史 OHLCV 数据。
+
+    Args:
+        symbol: 股票代码 (e.g., 'AAPL')
+        start: 开始日期 YYYY-MM-DD
+        end: 结束日期 YYYY-MM-DD
+
+    Returns:
+        DataFrame with Date, Open, High, Low, Close, Volume
+        None if fetch fails
+    """
+    try:
+        ticker = yf.Ticker(symbol)
+        df = ticker.history(start=start, end=end)
+        if df.empty:
+            return None
+        df = df.reset_index()
+        return df[['Date', 'Open', 'High', 'Low', 'Close', 'Volume']]
+    except Exception:
+        return None
+
+
+if __name__ == "__main__":
+    # Mock test - just verify function exists and runs
+    print("Test passed!")
+```'''
+
+        # Mock for composite/condition tasks
+        if category == 'composite' or any(kw in task_lower for kw in ['if ', 'return true', 'signal', 'divergence']):
+            return '''<think>
+用户需要一个组合条件判断工具。
+需要计算多个指标并返回布尔值。
+</think>
+
+好的，这是组合条件判断工具。
+
+```python
+import pandas as pd
+import numpy as np
+
+def check_trading_signal(prices: list, volume: list = None) -> bool:
+    """
+    检查交易信号条件。
+
+    Args:
+        prices: 收盘价列表
+        volume: 成交量列表 (可选)
+
+    Returns:
+        True if signal condition met, False otherwise
+    """
+    if len(prices) < 20:
+        return False
+
+    s = pd.Series(prices)
+    ma5 = s.rolling(5).mean().iloc[-1]
+    ma20 = s.rolling(20).mean().iloc[-1]
+
+    return ma5 > ma20
+
+
+if __name__ == "__main__":
+    prices = list(range(100, 125))
+    result = check_trading_signal(prices)
+    assert isinstance(result, bool)
+    print("Test passed!")
+```'''
+
+        # Default mock for calculation tasks
         return '''<think>
 用户想要计算 RSI (相对强弱指标)。
 公式: RSI = 100 - 100 / (1 + RS)
