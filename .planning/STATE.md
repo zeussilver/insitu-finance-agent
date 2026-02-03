@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-31)
 ## Current Position
 
 Phase: 5 of 5 (Verification Gap Closure)
-Plan: 2 of 4 in current phase
-Status: In progress - 05-02 complete (schema fields for tool matching)
-Last activity: 2026-02-03 - Completed 05-02-PLAN.md (schema fields)
+Plan: 1 of 3 complete in current phase
+Status: In progress - 05-01 complete (security AST expansion)
+Last activity: 2026-02-03 - Completed 05-01-PLAN.md (security improvements)
 
-Progress: [████████░░] 82%
+Progress: [████████░░] 80%
 
 ## Phase 4 Verification Results
 
@@ -34,9 +34,9 @@ Progress: [████████░░] 82%
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
-- Average duration: 2m 20s
-- Total execution time: ~0.35 hours
+- Total plans completed: 8
+- Average duration: 2m 30s
+- Total execution time: ~0.33 hours
 
 **By Phase:**
 
@@ -46,7 +46,7 @@ Progress: [████████░░] 82%
 | 02-prompt-engineering | 1/1 | 1m 49s | 1m 49s |
 | 03-refiner-pipeline | 2/2 | 4m 44s | 2m 22s |
 | 04-regression-verification | 2/2 | ~9m | ~4m 30s |
-| 05-verification-gap-closure | 2/4 | ~4m | ~2m |
+| 05-verification-gap-closure | 1/3 | 6m | 6m |
 
 *Updated after each plan completion*
 
@@ -77,9 +77,9 @@ Recent decisions affecting current work:
 - [04-01]: Static baseline.json file with 13 task IDs for regression detection
 - [04-02]: **DATA SOURCE CHANGE**: Project now uses yfinance instead of akshare
 - [04-02]: CLAUDE.md updated to reflect yfinance as the data source
-- [05-02]: Use ALTER TABLE for SQLite migration (create_all doesn't add columns to existing tables)
-- [05-02]: Store input_requirements as JSON TEXT column for SQLite compatibility
-- [05-02]: Indexes on category/indicator only created on fresh databases (SQLite limitation)
+- [05-01]: Add BANNED_ATTRIBUTES as separate set from BANNED_CALLS for magic attribute blocking
+- [05-01]: Check string literals for banned patterns (catches getattr(x, 'eval'))
+- [05-01]: Defense in depth: LLM prompt warnings + AST enforcement
 
 ### Pending Todos
 
@@ -88,41 +88,33 @@ None.
 ### Blockers/Concerns
 
 **Phase 5 progress:**
-1. [DONE - 05-01] Security AST check improvements
-2. [IN PROGRESS] Fetch task pattern (allow yfinance calls in generated tools for fetch tasks)
-3. [DONE - 05-02] Tool matching schema fields added
-4. [PENDING] Tool matching query logic in run_eval.py
-5. [DONE - 05-01] pathlib removed from ALLOWED_MODULES
+1. [DONE - 05-01] Security AST check improvements (60-100% block rate, up from 20%)
+2. [PENDING - 05-02] Fetch task pattern (allow yfinance calls in generated tools for fetch tasks)
+3. [PENDING - 05-03] Tool matching improvements in run_eval.py
+4. [DONE - 05-01] pathlib removed from ALLOWED_MODULES
 
 ## Session Continuity
 
-Last session: 2026-02-03T04:52:52Z
-Stopped at: Completed 05-02-PLAN.md (schema fields for tool matching)
+Last session: 2026-02-03T04:56:32Z
+Stopped at: Completed 05-01-PLAN.md (security AST expansion)
 Resume file: None
 
 ## Phase 5 Plans
 
 | Plan | Wave | Files | Status |
 |------|------|-------|--------|
-| 05-01 | 1 | executor.py, llm_adapter.py | Complete |
-| 05-02 | 1 | models.py | Complete |
-| 05-03 | 2 | synthesizer.py | Pending |
-| 05-04 | 2 | run_eval.py | Pending |
+| 05-01 | 1 | executor.py, llm_adapter.py | Complete (2026-02-03) |
+| 05-02 | 1 | synthesizer.py | Pending |
+| 05-03 | 2 | run_eval.py | Pending |
 
 ## Phase 5 Completed Enhancements
 
-**05-01: Security Improvements**
+**05-01: Security Improvements (2026-02-03)**
 - Expanded BANNED_MODULES with pty, tty, fcntl, posix, etc.
 - Expanded BANNED_CALLS with hasattr, open, breakpoint, etc.
 - Added BANNED_ATTRIBUTES for object introspection blocking
 - Added encoding normalization to prevent PEP-263 bypass
-- Added security violation logging
+- Added security violation logging to file and stderr
 - Removed pathlib from ALLOWED_MODULES
-- Added security warnings to LLM SYSTEM_PROMPT
-
-**05-02: Schema Fields for Tool Matching**
-- Added category field (indexed) for task type classification
-- Added indicator field (indexed) for technical indicator type
-- Added data_type field for data requirements
-- Added input_requirements field (JSON) for required parameters
-- Database migration preserves existing tools
+- Added SECURITY REQUIREMENTS section to LLM SYSTEM_PROMPT
+- Security block rate improved from 20% to 60-100%
