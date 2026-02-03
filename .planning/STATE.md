@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-31)
 
 **Core value:** Benchmark task success rate >= 80%
-**Current focus:** Phase 4 complete with issues found. Ready for Phase 5 (Gap Closure).
+**Current focus:** Phase 5 - Verification Gap Closure in progress.
 
 ## Current Position
 
-Phase: 4 of 5 (Regression Verification) - COMPLETE (ISSUES FOUND)
-Plan: 2 of 2 in current phase
-Status: Phase 4 complete, verification revealed 3 root cause issues
-Last activity: 2026-02-03 - Completed 04-02-PLAN.md (verification run)
+Phase: 5 of 5 (Verification Gap Closure)
+Plan: 2 of 4 in current phase
+Status: In progress - 05-02 complete (schema fields for tool matching)
+Last activity: 2026-02-03 - Completed 05-02-PLAN.md (schema fields)
 
-Progress: [████████░░] 80%
+Progress: [████████░░] 82%
 
 ## Phase 4 Verification Results
 
@@ -34,9 +34,9 @@ Progress: [████████░░] 80%
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
-- Average duration: 2m 24s
-- Total execution time: ~0.28 hours
+- Total plans completed: 9
+- Average duration: 2m 20s
+- Total execution time: ~0.35 hours
 
 **By Phase:**
 
@@ -46,6 +46,7 @@ Progress: [████████░░] 80%
 | 02-prompt-engineering | 1/1 | 1m 49s | 1m 49s |
 | 03-refiner-pipeline | 2/2 | 4m 44s | 2m 22s |
 | 04-regression-verification | 2/2 | ~9m | ~4m 30s |
+| 05-verification-gap-closure | 2/4 | ~4m | ~2m |
 
 *Updated after each plan completion*
 
@@ -76,6 +77,9 @@ Recent decisions affecting current work:
 - [04-01]: Static baseline.json file with 13 task IDs for regression detection
 - [04-02]: **DATA SOURCE CHANGE**: Project now uses yfinance instead of akshare
 - [04-02]: CLAUDE.md updated to reflect yfinance as the data source
+- [05-02]: Use ALTER TABLE for SQLite migration (create_all doesn't add columns to existing tables)
+- [05-02]: Store input_requirements as JSON TEXT column for SQLite compatibility
+- [05-02]: Indexes on category/indicator only created on fresh databases (SQLite limitation)
 
 ### Pending Todos
 
@@ -83,47 +87,42 @@ None.
 
 ### Blockers/Concerns
 
-**Phase 5 must address:**
-1. Security AST check not blocking LLM-generated dangerous code (4/5 bypass)
-2. Pure function pattern (data-as-arguments) conflicts with fetch tasks that need to call yfinance
-3. Keyword-based `_infer_tool_name()` in run_eval.py matches wrong tools
-4. executor.py ALLOWED_MODULES has yfinance but pathlib should be removed
+**Phase 5 progress:**
+1. [DONE - 05-01] Security AST check improvements
+2. [IN PROGRESS] Fetch task pattern (allow yfinance calls in generated tools for fetch tasks)
+3. [DONE - 05-02] Tool matching schema fields added
+4. [PENDING] Tool matching query logic in run_eval.py
+5. [DONE - 05-01] pathlib removed from ALLOWED_MODULES
 
 ## Session Continuity
 
-Last session: 2026-02-03T11:00:00Z
-Stopped at: Completed Phase 4 verification, issues documented
+Last session: 2026-02-03T04:52:52Z
+Stopped at: Completed 05-02-PLAN.md (schema fields for tool matching)
 Resume file: None
 
-## Phase 4 Plans
+## Phase 5 Plans
 
 | Plan | Wave | Files | Status |
 |------|------|-------|--------|
-| 04-01 | 1 | baseline.json, run_eval.py | Complete |
-| 04-02 | 2 | (verification run) | Complete (issues found) |
+| 05-01 | 1 | executor.py, llm_adapter.py | Complete |
+| 05-02 | 1 | models.py | Complete |
+| 05-03 | 2 | synthesizer.py | Pending |
+| 05-04 | 2 | run_eval.py | Pending |
 
-## Phase 4 Completed Enhancements
+## Phase 5 Completed Enhancements
 
-**run_eval.py now includes:**
-- Colors class: ANSI escape codes for GREEN, RED, YELLOW, CYAN, BOLD
-- ResultState class: Three-state classification (pass, fail, error)
-- Baseline loading: Loads baseline.json for regression detection
-- clear_registry(): Deletes all tools for fresh generation test
-- save_results_json(): Saves detailed JSON to benchmarks/results/
-- detect_regressions(): Compares against baseline passing tasks
-- print_summary(): Colored summary with per-category breakdown
-- SIGINT handler: Graceful Ctrl+C with partial result save
-- --clear-registry flag: CLI option for fresh generation test
+**05-01: Security Improvements**
+- Expanded BANNED_MODULES with pty, tty, fcntl, posix, etc.
+- Expanded BANNED_CALLS with hasattr, open, breakpoint, etc.
+- Added BANNED_ATTRIBUTES for object introspection blocking
+- Added encoding normalization to prevent PEP-263 bypass
+- Added security violation logging
+- Removed pathlib from ALLOWED_MODULES
+- Added security warnings to LLM SYSTEM_PROMPT
 
-**baseline.json contains:**
-- 13 previously-passing task IDs (8 fetch + 2 calc + 3 composite)
-- Target pass rate: 0.80 (80%)
-
-## Phase 5 Scope (Gap Closure)
-
-**Issues to fix:**
-1. Security blocking improvements
-2. Fetch task pattern (allow yfinance calls in generated tools for fetch tasks)
-3. Tool matching (semantic similarity instead of keyword matching)
-
-**Entry point:** `/gsd:discuss-phase 5` or `/gsd:plan-phase 5`
+**05-02: Schema Fields for Tool Matching**
+- Added category field (indexed) for task type classification
+- Added indicator field (indexed) for technical indicator type
+- Added data_type field for data requirements
+- Added input_requirements field (JSON) for required parameters
+- Database migration preserves existing tools
