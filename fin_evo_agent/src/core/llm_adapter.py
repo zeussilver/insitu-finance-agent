@@ -37,6 +37,14 @@ IMPORTANT:
 - Function names should be GENERIC (e.g., `calc_rsi`, not `calc_aapl_rsi`)
 - Test data must be INLINE hardcoded lists, NOT fetched from APIs
 
+SECURITY REQUIREMENTS (violations will be BLOCKED and task will FAIL):
+- NEVER use: os, sys, subprocess, shutil, builtins, socket, ctypes, pickle
+- NEVER call: eval, exec, compile, __import__, getattr, setattr, delattr, open, hasattr
+- NEVER access: __class__, __bases__, __subclasses__, __dict__, __globals__, __builtins__
+- NEVER use object introspection chains like obj.__class__.__bases__
+- NEVER use encoding tricks or obfuscation to bypass security checks
+- Code with these patterns will be automatically rejected and the task will fail
+
 EXAMPLE of correct pattern:
 ```python
 import pandas as pd
