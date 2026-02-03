@@ -26,6 +26,30 @@ class TaskExecutor:
     # Standard OHLCV columns from yfinance
     OHLCV_COLUMNS = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume']
 
+    # Common English words that look like ticker symbols - EXCLUDE from matching
+    SYMBOL_EXCLUSIONS = {
+        'GET', 'SET', 'PUT', 'AND', 'THE', 'FOR', 'NOT', 'ALL', 'HAS',
+        'ADD', 'SUB', 'DIV', 'MUL', 'MAX', 'MIN', 'AVG', 'SUM', 'END',
+        'NEW', 'OLD', 'TOP', 'LOW', 'NET', 'DAY', 'ETF', 'USA', 'USD',
+        'BUY', 'NOW', 'USE', 'OUT', 'OUR', 'ANY', 'CAN', 'MAY', 'SAY',
+        'HOW', 'WHY', 'YES', 'TWO', 'TEN', 'ONE', 'ITS'
+    }
+
+    # Index name to yfinance symbol mapping
+    INDEX_SYMBOL_MAPPING = {
+        'S&P 500': '^GSPC',
+        'S&P500': '^GSPC',
+        'SP500': '^GSPC',
+        'SP 500': '^GSPC',
+        'DOW': '^DJI',
+        'DJIA': '^DJI',
+        'DOW JONES': '^DJI',
+        'NASDAQ': '^IXIC',
+        'RUSSELL': '^RUT',
+        'RUSSELL 2000': '^RUT',
+        'VIX': '^VIX',
+    }
+
     # Mapping of task patterns to bootstrap tools
     FETCH_TOOL_MAPPING = {
         'stock_hist': 'get_stock_hist',
@@ -53,21 +77,43 @@ class TaskExecutor:
         return self._bootstrap_cache.get(tool_name)
 
     def extract_symbol(self, query: str) -> str:
-        """Extract stock symbol from query string."""
+        """Extract stock symbol from query string.
+
+        Extraction order (first match wins):
+        1. Index names (S&P 500, DOW, NASDAQ) -> yfinance index symbols
+        2. Known US tickers (AAPL, MSFT, SPY, etc.)
+        3. Regex pattern matching with exclusion filter
+        4. Default to AAPL
+        """
         query_upper = query.upper()
 
-        # Common US tickers
-        us_tickers = ['AAPL', 'MSFT', 'GOOGL', 'GOOG', 'AMZN', 'TSLA', 'META', 'NVDA', 'AMD', 'INTC']
+        # Step 1: Check index names FIRST (case-insensitive)
+        for index_name, symbol in self.INDEX_SYMBOL_MAPPING.items():
+            if index_name.upper() in query_upper:
+                return symbol
+
+        # Step 2: Check known US tickers (common stocks + ETFs)
+        us_tickers = [
+            'AAPL', 'MSFT', 'GOOGL', 'GOOG', 'AMZN', 'TSLA', 'META', 'NVDA', 'AMD', 'INTC',
+            'SPY', 'QQQ', 'IWM', 'DIA', 'VOO', 'VTI', 'GLD', 'SLV', 'USO', 'XLF',
+            'NFLX', 'PYPL', 'CRM', 'ADBE', 'ORCL', 'IBM', 'CSCO', 'QCOM', 'TXN', 'AVGO'
+        ]
         for ticker in us_tickers:
             if ticker in query_upper:
                 return ticker
 
-        # Pattern match for ticker-like strings
-        match = re.search(r'\b([A-Z]{2,5})\b', query_upper)
-        if match:
-            return match.group(1)
+        # Step 3: Regex pattern matching with exclusion filter
+        # Find all potential ticker patterns (2-5 uppercase letters)
+        # Sort by length descending to prefer longer matches (GETH > GET)
+        matches = re.findall(r'\b([A-Z]{2,5})\b', query_upper)
+        matches_sorted = sorted(matches, key=len, reverse=True)
 
-        return 'AAPL'  # Default
+        for match in matches_sorted:
+            if match not in self.SYMBOL_EXCLUSIONS:
+                return match
+
+        # Step 4: Default fallback
+        return 'AAPL'
 
     def extract_date_range(self, query: str) -> Tuple[str, str]:
         """Extract date range from query, or return default."""
