@@ -8,19 +8,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This project reproduces the core tool evolution loop from the paper "Yunjue Agent: A Fully Reproducible, Zero-Start In-Situ Self-Evolving Agent System" (Li et al., 2026).
 
+### Current Milestone
+
+**Architecture Overhaul (Option C)** - Completed. Transformed from single-rule system to capability-based, contract-validated architecture targeting 90%+ pass rate.
+
 ### Core Principles
 
 | Principle | Implementation |
 |-----------|----------------|
 | Auditable | All generated code as `.py` files in `data/artifacts/`, Git trackable |
 | Reproducible | Frozen yfinance data via Parquet snapshots; locked dependency versions |
-| Secure | AST static analysis + subprocess sandboxing before code execution |
+| Secure | Capability-based AST analysis + subprocess sandboxing before code execution |
 
 ### Architecture
 
 **"Metadata in DB, Payload on Disk"** - SQLite stores tool metadata, actual code files stored on disk.
 
-**JSON-IPC** for sandbox communication - avoids eval(), uses subprocess with JSON file exchange.
+**Capability-Based Verification** - Different tool categories have different allowed modules:
+- `calculation`: pandas, numpy, datetime, json, math, decimal, collections, re, typing
+- `fetch`: Same as calculation + yfinance, hashlib, pathlib
+- `composite`: Same as calculation
+
+**Multi-Stage Verification Pipeline**:
+1. AST_SECURITY - Capability-specific import/call rules
+2. SELF_TEST - Built-in assert tests pass
+3. CONTRACT_VALID - Output matches contract constraints
+4. INTEGRATION - Real data test (fetch tools only)
 
 ## Quick Start
 
@@ -83,6 +96,19 @@ completion = client.chat.completions.create(
 
 ## Implementation Status
 
+### Architecture Overhaul - COMPLETED ✅
+
+| Component | File | Status |
+|-----------|------|--------|
+| Capability system | `src/core/capabilities.py` | ✅ NEW |
+| Contract definitions | `src/core/contracts.py` | ✅ NEW |
+| Multi-stage verifier | `src/core/verifier.py` | ✅ NEW |
+| Category-specific prompts | `src/core/llm_adapter.py` | ✅ Updated |
+| Capability-based AST check | `src/core/executor.py` | ✅ Updated |
+| Verifier integration | `src/evolution/synthesizer.py` | ✅ Updated |
+| Network retry | `src/finance/data_proxy.py` | ✅ Updated |
+| Contract IDs in tasks | `benchmarks/tasks.jsonl` | ✅ Updated |
+
 ### Phase 1a MVP - COMPLETED ✅
 
 | Component | File | Status |
@@ -100,18 +126,6 @@ completion = client.chat.completions.create(
 | Benchmark tasks | `benchmarks/tasks.jsonl` | ✅ |
 | Run comparison | `benchmarks/compare_runs.py` | ✅ |
 | CLI entry point | `main.py` | ✅ |
-
-### Verified Working
-
-- Database initialization with 5 SQLModel tables
-- Security blocking (os, subprocess, eval all blocked; pathlib, hashlib whitelisted)
-- Tool synthesis (LLM → verify → register) with Qwen3 API
-- Tool refinement (error analysis → patch → re-verify, max 3 attempts)
-- Tool reuse (100% reuse rate on second run)
-- Data caching (Parquet snapshots)
-- Evaluation suite (20 tasks, 3 categories, security tasks)
-- Run comparison (consistency rate, reuse improvement)
-- LLM timeout protection (60s)
 
 ### Pending Implementation
 
@@ -137,11 +151,21 @@ python main.py --security-check
 # Run evaluation suite
 python benchmarks/run_eval.py --agent evolving --run-id run1
 
+# Run with fresh registry (clear all tools first)
+python benchmarks/run_eval.py --clear-registry --run-id fresh_run
+
 # Run security-only evaluation
 python benchmarks/run_eval.py --security-only
 
 # Compare two evaluation runs
 python benchmarks/compare_runs.py run1 run2
+
+# Test individual components
+python src/core/capabilities.py    # Capability system
+python src/core/contracts.py       # Contract definitions
+python src/core/verifier.py        # Multi-stage verifier
+python src/core/executor.py        # AST security check
+python src/core/task_executor.py   # Task execution
 ```
 
 ## Project Structure
@@ -157,22 +181,26 @@ fin_evo_agent/
 │   │   ├── bootstrap/        # Initial yfinance tools
 │   │   └── generated/        # Evolved tools (e.g., calc_rsi_v0.1.0_xxx.py)
 │   ├── cache/                # [Git Ignore] Parquet snapshots
-│   └── logs/                 # thinking_process logs
+│   └── logs/                 # thinking_process logs, security_violations.log
 ├── src/
 │   ├── config.py             # Global configuration
 │   ├── core/
-│   │   ├── models.py         # SQLModel definitions (5 tables)
-│   │   ├── llm_adapter.py    # Qwen3 protocol cleaning
+│   │   ├── models.py         # SQLModel definitions (5 tables + VerificationStage)
+│   │   ├── llm_adapter.py    # Qwen3 + category-specific prompts
 │   │   ├── registry.py       # Tool registration & retrieval
-│   │   └── executor.py       # AST check + sandbox execution
+│   │   ├── executor.py       # AST check + sandbox execution
+│   │   ├── task_executor.py  # Task orchestration
+│   │   ├── capabilities.py   # ✅ NEW: Capability enums & module mappings
+│   │   ├── contracts.py      # ✅ NEW: Contract definitions for 20 tasks
+│   │   └── verifier.py       # ✅ NEW: Multi-stage verification pipeline
 │   ├── evolution/
-│   │   ├── synthesizer.py    # Generate → Verify → Register
+│   │   ├── synthesizer.py    # Generate → Verify → Register (with verifier)
 │   │   └── refiner.py        # Error Analysis → Patch → Re-verify
 │   └── finance/
-│       ├── data_proxy.py     # yfinance caching decorator
+│       ├── data_proxy.py     # yfinance caching + retry decorator
 │       └── bootstrap.py      # Initial yfinance tool set (5 tools)
 └── benchmarks/
-    ├── tasks.jsonl            # 20 benchmark tasks (fetch/calc/composite)
+    ├── tasks.jsonl            # 20 benchmark tasks with contract_id
     ├── security_tasks.jsonl   # 5 security test cases
     ├── run_eval.py            # Evaluation runner
     └── compare_runs.py        # Run comparison tool
@@ -181,6 +209,7 @@ fin_evo_agent/
 ## Data Models (5 SQLModel Tables)
 
 1. **ToolArtifact** - Tool metadata (name, version, hash, permissions, status, test_cases)
+   - NEW: `capabilities`, `contract_id`, `verification_stage` fields
 2. **ExecutionTrace** - Execution history (inputs, outputs, errors, timing, LLM config)
 3. **ErrorReport** - Error analysis (error_type, root_cause from LLM)
 4. **ToolPatch** - Repair records (diffs, rationale, resulting_tool)
@@ -188,29 +217,48 @@ fin_evo_agent/
 
 ## Security Model
 
-**AST Static Analysis Blocklist:**
-- Modules: `os`, `sys`, `subprocess`, `shutil`, `importlib`, `ctypes`, `socket`, `http`, `urllib`, `pickle`
-- Calls: `eval`, `exec`, `compile`, `__import__`, `globals`, `locals`, `vars`, `getattr`, `setattr`
-- Magic attributes: `__dict__`, `__class__`, `__bases__`, `__mro__`
+**Capability-Based AST Analysis:**
+- Each tool category has specific allowed modules
+- `calculation` tools CANNOT import yfinance (blocked)
+- `fetch` tools CAN import yfinance
 
-**Allowed Modules:** `pandas`, `numpy`, `datetime`, `json`, `math`, `decimal`, `collections`, `re`, `yfinance`, `typing`, `hashlib`
+**Always Banned Modules:** `os`, `sys`, `subprocess`, `shutil`, `importlib`, `ctypes`, `socket`, `http`, `urllib`, `pickle`
+
+**Always Banned Calls:** `eval`, `exec`, `compile`, `__import__`, `globals`, `locals`, `vars`, `getattr`, `setattr`
+
+**Always Banned Attributes:** `__dict__`, `__class__`, `__bases__`, `__mro__`, `__globals__`
 
 **Sandbox:** subprocess isolation with 30s timeout.
 
-## Tool Evolution Loop
+## Tool Evolution Loop (Updated)
 
-1. **Synthesize**: LLM generates tool code with type hints, docstring, and 2 assert tests
-2. **Static Check**: AST analysis blocks dangerous code
-3. **Verify**: Execute `if __name__ == '__main__':` tests in sandbox
-4. **Register**: If passed, store code on disk and metadata in DB
-5. **Refine**: On failure, analyze error and generate patch (max 3 attempts)
+1. **Synthesize**: LLM generates tool code with category-specific prompt
+2. **Multi-Stage Verify**:
+   - Stage 1: AST security check (capability-based)
+   - Stage 2: Self-test execution
+   - Stage 3: Contract validation (output constraints)
+   - Stage 4: Integration test (fetch tools only)
+3. **Register**: If ALL stages pass, store code on disk and metadata in DB
+4. **Refine**: On failure, analyze error and generate patch (max 3 attempts)
+
+## Contract System
+
+17 predefined contracts for all task types:
+- **Fetch**: `fetch_financial`, `fetch_quote`, `fetch_price`, `fetch_ohlcv`, `fetch_list`
+- **Calc**: `calc_rsi`, `calc_ma`, `calc_bollinger`, `calc_macd`, `calc_volatility`, `calc_kdj`, `calc_drawdown`, `calc_correlation`
+- **Composite**: `comp_signal`, `comp_divergence`, `comp_portfolio`, `comp_conditional_return`
+
+Each contract defines:
+- Input types and required inputs
+- Output type (numeric, dict, boolean, list, dataframe)
+- Output constraints (min/max ranges, required keys)
 
 ## Data Proxy (yfinance Caching)
 
-The `@DataProvider.reproducible` decorator implements record-replay:
+The `@DataProvider.reproducible` decorator implements record-replay with retry:
 - Cache key: MD5(func_name + args + kwargs)
 - Storage: `data/cache/{key}.parquet`
-- All columns converted to str for Parquet compatibility
+- Retry: 3 attempts with exponential backoff (1-10s)
 - First call: Fetch from network, save to cache
 - Subsequent calls: Read from cache (no network)
 
@@ -222,7 +270,7 @@ data/artifacts/generated/{tool_name}_v{version}_{hash8}.py
 
 Example: `calc_rsi_v0.1.0_f42711fb.py`
 
-## Evaluation (Pending)
+## Evaluation
 
 20 benchmark tasks in 3 categories:
 - **Fetch & Lookup** (8): Data retrieval + field extraction
@@ -230,33 +278,82 @@ Example: `calc_rsi_v0.1.0_f42711fb.py`
 - **Composite** (4): Multi-tool composition
 
 Target metrics:
-- Task Success Rate ≥ 80%
+- Task Success Rate ≥ 80% (target 90%+ with architecture overhaul)
 - Tool Reuse Rate ≥ 30% (second run)
 - Regression Rate ≈ 0%
 - Security Block Rate = 100%
 
+## Key Decisions (Architecture Overhaul)
 
+1. **Capability-based permissions**: Different tool categories have different allowed modules
+2. **Contract-based validation**: Each task type has input/output contracts
+3. **Multi-stage verification**: Tools only promoted if ALL stages pass (eliminates implicit pass)
+4. **Network resilience**: Retry with exponential backoff for data fetching
+5. **Category-specific LLM prompts**: FETCH_SYSTEM_PROMPT, CALCULATE_SYSTEM_PROMPT, COMPOSITE_SYSTEM_PROMPT
 
-## 每次compact前增量更新CLAUDE.md 至少包含：
+## Recent Changes (Architecture Overhaul)
 
--项目目标 & 当前里程碑（1–2 段）
+### New Files
+- `src/core/capabilities.py` - ToolCapability enum, module mappings
+- `src/core/contracts.py` - ToolContract dataclass, 17 contracts
+- `src/core/verifier.py` - MultiStageVerifier class
 
--目录结构简图（只列关键目录/模块）
+### Modified Files
+- `src/core/models.py` - Added VerificationStage enum, new fields
+- `src/core/executor.py` - Added static_check_with_rules()
+- `src/core/llm_adapter.py` - Category-specific prompts
+- `src/evolution/synthesizer.py` - Integrated MultiStageVerifier
+- `src/core/task_executor.py` - Financial queries now fall through
+- `src/finance/data_proxy.py` - with_retry decorator
+- `benchmarks/tasks.jsonl` - Added contract_id field
+- `benchmarks/run_eval.py` - Integrated contracts/verifier
 
--约定：代码风格、命名、错误处理、日志、配置
+---
 
--必跑命令：lint/test/typecheck/e2e（以及成功标准）
+## Benchmark Gap Closure (2026-02-03)
 
--“压缩时必须保留”：修改过的文件列表、未完成 TODO、关键决策、测试命令（官方明确建议可在 CLAUDE.md 里定制 compaction 保留项）
+### Latest Benchmark Result
+- **Pass Rate**: 60% (12/20) - Target: 80%+
+- **Run ID**: `full_benchmark_20260203_144839`
+- **Results**: `benchmarks/results/full_benchmark_20260203_144839.json`
 
-##每完成一个阶段，让 Claude 更新仓库内的：
+### Root Causes Identified (8 failures)
 
--plan.md（下一步）
+| Issue | Affected Tasks | Root Cause |
+|-------|----------------|------------|
+| Argument mismatch | fetch_001, fetch_002, fetch_003, comp_002, comp_003 | Tools use custom param names; TaskExecutor passes standard names |
+| Multi-asset fetch | calc_008, comp_003 | TaskExecutor only fetches single stock; correlation/portfolio need multiple |
+| KDJ key case | calc_006 | Contract expects `k,d,j`; tool outputs `K,D,J` |
+| `warnings` blocked | fetch_007 | LLM adds `import warnings` but not in ALLOWED_MODULES |
+| Tool reuse mismatch | fetch_002 | Schema matching too loose; wrong tool reused |
 
--progress.md（已完成/当前状态/下一步）
+### Fixes Applied (5 Windows)
 
--decisions.md（关键决策与理由）
+| Fix | File | Change |
+|-----|------|--------|
+| 1. Allow warnings | `src/core/executor.py` | Added `'warnings'` to ALLOWED_MODULES |
+| 2. Case-insensitive keys | `src/core/verifier.py` | Already implemented (no change needed) |
+| 3. Multi-asset fetch | `src/core/task_executor.py` | Added `extract_multiple_symbols()`, `is_multi_asset_task()`, `_fetch_multi_asset_data()` |
+| 4. Param standardization | `src/core/llm_adapter.py` | Added param naming requirements to prompts |
+| 5. Schema matching | `benchmarks/run_eval.py` | Improved `_extract_schema_from_task()` specificity |
 
--notes/testing.md（必跑命令与最近一次结果）
+### Next Steps
+1. Run benchmark to verify fixes: `python benchmarks/run_eval.py --clear-registry --run-id post_fix_verification`
+2. Target: 80%+ pass rate (16/20 tasks)
 
-这样即使 compaction 发生，也能通过“让它读这些文件”快速恢复完整工作状态，而不是依赖被压缩过的聊天摘要。
+### Key Files Modified (Gap Closure)
+- `src/core/executor.py:67` - ALLOWED_MODULES now includes `warnings`
+- `src/core/task_executor.py:163-318` - Multi-asset support methods
+- `src/core/llm_adapter.py:35-45,175-183` - Parameter naming conventions in prompts
+- `benchmarks/run_eval.py:489-557` - Specific schema extraction for fetch tasks
+
+---
+
+## Compaction Preservation
+
+When context is compacted, preserve:
+- Modified files list above
+- Key decisions documented
+- Test commands: `python src/core/verifier.py`, `python benchmarks/run_eval.py --clear-registry`
+- Target: 90%+ pass rate with multi-stage verification
+- **IMPORTANT**: Run `python benchmarks/run_eval.py --clear-registry --run-id verify` to test the 5 fixes applied on 2026-02-03
