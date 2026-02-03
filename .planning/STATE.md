@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-31)
 
 **Core value:** Benchmark task success rate >= 80%
-**Current focus:** Phase 5 - Verification Gap Closure in progress.
+**Current focus:** Phase 5 - Verification Gap Closure COMPLETE.
 
 ## Current Position
 
 Phase: 5 of 5 (Verification Gap Closure)
-Plan: 5 of 6 complete in current phase (05-01, 05-02, 05-03, 05-04, 05-05)
-Status: In progress - Wave 3 in progress
-Last activity: 2026-02-03 - Completed 05-05-PLAN.md (Benchmark Integration)
+Plan: 6 of 6 complete in current phase (05-01, 05-02, 05-03, 05-04, 05-05, 05-06)
+Status: Phase 5 COMPLETE
+Last activity: 2026-02-03 - Completed 05-06-PLAN.md (GitHub Actions CI)
 
-Progress: [█████████░] 92%
+Progress: [██████████] 100%
 
 ## Phase 4 Verification Results
 
@@ -34,9 +34,9 @@ Progress: [█████████░] 92%
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 11
-- Average duration: 2m 18s
-- Total execution time: ~0.42 hours
+- Total plans completed: 12
+- Average duration: 2m 15s
+- Total execution time: ~0.45 hours
 
 **By Phase:**
 
@@ -46,7 +46,7 @@ Progress: [█████████░] 92%
 | 02-prompt-engineering | 1/1 | 1m 49s | 1m 49s |
 | 03-refiner-pipeline | 2/2 | 4m 44s | 2m 22s |
 | 04-regression-verification | 2/2 | ~9m | ~4m 30s |
-| 05-verification-gap-closure | 5/6 | ~12m | ~2m 24s |
+| 05-verification-gap-closure | 6/6 | ~14m | ~2m 20s |
 
 *Updated after each plan completion*
 
@@ -89,6 +89,9 @@ Recent decisions affecting current work:
 - [05-05]: Schema-based matching tried first, keyword-based as fallback
 - [05-05]: TaskExecutor handles all task categories uniformly
 - [05-05]: Preserved _infer_tool_name() for backwards compatibility
+- [05-06]: Hard fail on regressions, warn on pass rate < 80% (LLM variance)
+- [05-06]: Cache yfinance data by tasks.jsonl hash for reproducibility
+- [05-06]: Use thollander/actions-comment-pull-request@v2 for PR comments
 
 ### Pending Todos
 
@@ -96,18 +99,12 @@ None.
 
 ### Blockers/Concerns
 
-**Phase 5 progress:**
-1. [DONE - 05-01] Security AST check improvements (60-100% block rate, up from 20%)
-2. [DONE - 05-02] Schema fields added to ToolArtifact model
-3. [DONE - 05-03] Schema-based tool matching in registry and synthesizer
-4. [DONE - 05-04] TaskExecutor module for fetch + calc chaining
-5. [DONE - 05-05] Benchmark integration (EvalRunner + TaskExecutor + schema matching)
-6. [PENDING - 05-06] Final verification
+All Phase 5 plans complete. Project ready for final verification and release.
 
 ## Session Continuity
 
-Last session: 2026-02-03T05:06:56Z
-Stopped at: Completed 05-05-PLAN.md (Benchmark Integration)
+Last session: 2026-02-03T05:11:00Z
+Stopped at: Completed 05-06-PLAN.md (GitHub Actions CI)
 Resume file: None
 
 ## Phase 5 Plans
@@ -119,7 +116,7 @@ Resume file: None
 | 05-03 | 2 | registry.py, synthesizer.py | Complete (2026-02-03) |
 | 05-04 | 2 | src/core/task_executor.py | Complete (2026-02-03) |
 | 05-05 | 3 | benchmarks/run_eval.py | Complete (2026-02-03) |
-| 05-06 | 3 | TBD | Pending |
+| 05-06 | 4 | .github/workflows/benchmark.yml | Complete (2026-02-03) |
 
 ## Phase 5 Completed Enhancements
 
@@ -162,3 +159,12 @@ Resume file: None
 - Keyword-based matching preserved as fallback
 - Task execution uses task_executor.execute_task() for uniform flow
 - Smoke test verified: tool reuse and execution working
+
+**05-06: GitHub Actions CI (2026-02-03)**
+- Created .github/workflows/benchmark.yml
+- Triggers on PR to main and manual workflow dispatch
+- Uses API_KEY from GitHub Secrets for LLM API
+- Caches yfinance data for reproducibility
+- Hard fails on regressions, warns on pass rate < 80%
+- Posts results as PR comment with summary table
+- Uploads benchmark results and security logs as artifacts
