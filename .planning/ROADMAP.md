@@ -97,7 +97,7 @@ Issues identified and documented for Phase 5.
   4. Pass rate >= 80% (16/20)
   5. Zero regressions on baseline tasks
   6. CI pipeline catches regressions automatically
-**Plans**: 9 plans (6 original + 3 gap closure)
+**Plans**: 12 plans (6 original + 3 round 1 gap closure + 3 round 2 gap closure)
 
 Plans:
 - [x] 05-01-PLAN.md — Expand AST security blocklists (block introspection chains, getattr, encoding bypasses)
@@ -106,9 +106,12 @@ Plans:
 - [x] 05-04-PLAN.md — Create TaskExecutor for bootstrap tool chaining (fetch + calc pattern)
 - [x] 05-05-PLAN.md — Update run_eval.py to use TaskExecutor and schema matching
 - [x] 05-06-PLAN.md — Create GitHub Actions CI workflow for regression testing
-- [ ] 05-07-PLAN.md — Fix extract_symbol() to not match "GET" as ticker symbol
-- [ ] 05-08-PLAN.md — Add simple fetch query handling directly from OHLCV data
-- [ ] 05-09-PLAN.md — Add security logging to eval and run verification benchmark
+- [x] 05-07-PLAN.md — Fix extract_symbol() to not match "GET" as ticker symbol
+- [x] 05-08-PLAN.md — Add simple fetch query handling directly from OHLCV data
+- [x] 05-09-PLAN.md — Add security logging to eval and run verification benchmark
+- [ ] 05-10-PLAN.md — Fix UNSUPPORTED_FETCH_PATTERNS ValueError (return None instead of raise)
+- [ ] 05-11-PLAN.md — Fix symbol extraction "DOW" in "drawdown" bug (word boundary matching)
+- [ ] 05-12-PLAN.md — Add yfinance retry mechanism with exponential backoff
 
 **Issues to Address (Original):**
 1. **Security**: LLM generates dangerous code that passes AST check (4/5 attacks bypass)
@@ -122,6 +125,11 @@ Plans:
 3. **Security Logging**: Violations not logged during security-only evaluation
 4. **Pass Rate Regression**: Phase 5 made pass rate worse (55% vs 60% in Phase 4)
 
+**Re-Verification Gaps (from 05-RE-VERIFICATION.md - Round 2):**
+1. **UNSUPPORTED_FETCH_PATTERNS ValueError**: _handle_simple_fetch() raises ValueError, breaking task execution
+2. **"DOW" in "drawdown"**: INDEX_SYMBOL_MAPPING matches "DOW" substring, causing calc_007 to fetch ^DJI instead of MSFT
+3. **yfinance Network Resilience**: No retry mechanism when yfinance returns no data
+
 ## Progress
 
 **Execution Order:**
@@ -133,4 +141,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 2. Prompt Engineering for Correct Tool Generation | 1/1 | Complete | 2026-02-02 |
 | 3. Refiner Pipeline Repair | 2/2 | Complete | 2026-02-02 |
 | 4. Regression Verification | 2/2 | Complete (Issues Found) | 2026-02-03 |
-| 5. Verification Gap Closure | 6/9 | Gap Closure In Progress | - |
+| 5. Verification Gap Closure | 9/12 | Gap Closure Round 2 | - |
