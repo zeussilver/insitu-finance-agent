@@ -4,14 +4,20 @@ Implements reproducible data access:
 - First call: Fetch from yfinance, cache as Parquet
 - Subsequent calls: Replay from cache (no network)
 
+Features:
+- Retry with exponential backoff for network resilience
+- Parquet caching for reproducibility
+
 Cache key: MD5(func_name + args + kwargs)
 Storage: data/cache/{key}.parquet
 """
 
 import hashlib
 import json
+import time
 from functools import wraps
 from pathlib import Path
+from typing import Callable, TypeVar
 
 import yfinance as yf
 import pandas as pd
@@ -19,6 +25,60 @@ import pandas as pd
 import sys
 sys.path.insert(0, str(__file__).rsplit("/", 3)[0])
 from src.config import CACHE_DIR
+
+
+# Network retry configuration
+RETRY_MAX_ATTEMPTS = 3
+RETRY_BASE_DELAY = 1.0  # seconds
+RETRY_MAX_DELAY = 10.0  # seconds
+RETRY_BACKOFF_FACTOR = 2.0
+
+
+T = TypeVar('T')
+
+
+def with_retry(
+    max_attempts: int = RETRY_MAX_ATTEMPTS,
+    base_delay: float = RETRY_BASE_DELAY,
+    max_delay: float = RETRY_MAX_DELAY,
+    backoff_factor: float = RETRY_BACKOFF_FACTOR
+) -> Callable:
+    """Decorator for retry with exponential backoff.
+
+    Args:
+        max_attempts: Maximum number of retry attempts
+        base_delay: Initial delay between retries (seconds)
+        max_delay: Maximum delay between retries (seconds)
+        backoff_factor: Multiplier for exponential backoff
+
+    Returns:
+        Decorated function with retry logic
+    """
+    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+        @wraps(func)
+        def wrapper(*args, **kwargs) -> T:
+            last_exception = None
+            delay = base_delay
+
+            for attempt in range(max_attempts):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    last_exception = e
+                    if attempt < max_attempts - 1:
+                        # Log retry attempt
+                        print(f"[Retry] Attempt {attempt + 1}/{max_attempts} failed: {e}")
+                        print(f"[Retry] Waiting {delay:.1f}s before retry...")
+                        time.sleep(delay)
+                        # Exponential backoff
+                        delay = min(delay * backoff_factor, max_delay)
+                    else:
+                        print(f"[Retry] All {max_attempts} attempts failed")
+
+            raise last_exception
+
+        return wrapper
+    return decorator
 
 
 class DataProvider:
@@ -37,7 +97,7 @@ class DataProvider:
 
     @classmethod
     def reproducible(cls, func):
-        """Decorator for reproducible data access with Parquet caching."""
+        """Decorator for reproducible data access with Parquet caching and retry."""
         @wraps(func)
         def wrapper(*args, **kwargs):
             cache_path = cls._get_cache_path(func.__name__, args, kwargs)
@@ -46,17 +106,21 @@ class DataProvider:
             if cache_path.exists():
                 return pd.read_parquet(cache_path)
 
-            # 2. Record mode (cache miss)
-            try:
+            # 2. Record mode (cache miss) with retry
+            @with_retry(max_attempts=RETRY_MAX_ATTEMPTS)
+            def fetch_with_retry():
                 print(f"[Network] Fetching {func.__name__}...")
-                df = func(*args, **kwargs)
+                return func(*args, **kwargs)
+
+            try:
+                df = fetch_with_retry()
 
                 # Save to Parquet (convert all columns to str for compatibility)
                 if isinstance(df, pd.DataFrame) and not df.empty:
                     df.astype(str).to_parquet(cache_path)
                 return df
             except Exception as e:
-                raise RuntimeError(f"Data Fetch Failed: {str(e)}")
+                raise RuntimeError(f"Data Fetch Failed after {RETRY_MAX_ATTEMPTS} attempts: {str(e)}")
         return wrapper
 
 
