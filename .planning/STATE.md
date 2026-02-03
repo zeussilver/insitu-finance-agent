@@ -5,23 +5,38 @@
 See: .planning/PROJECT.md (updated 2026-01-31)
 
 **Core value:** Benchmark task success rate >= 80%
-**Current focus:** Phase 4 in progress. Evaluation infrastructure ready.
+**Current focus:** Phase 4 complete with issues found. Ready for Phase 5 (Gap Closure).
 
 ## Current Position
 
-Phase: 4 of 4 (Regression Verification)
-Plan: 1 of 2 in current phase
-Status: In progress
-Last activity: 2026-02-02 - Completed 04-01-PLAN.md
+Phase: 4 of 5 (Regression Verification) - COMPLETE (ISSUES FOUND)
+Plan: 2 of 2 in current phase
+Status: Phase 4 complete, verification revealed 3 root cause issues
+Last activity: 2026-02-03 - Completed 04-02-PLAN.md (verification run)
 
-Progress: [████████░░] 86%
+Progress: [████████░░] 80%
+
+## Phase 4 Verification Results
+
+**Benchmark Run:** verification_phase4.json (2026-02-03)
+
+| Metric | Target | Actual | Status |
+|--------|--------|--------|--------|
+| Pass Rate | >= 80% | 60% (12/20) | NOT MET |
+| Regressions | 0 | 5 | NOT MET |
+| Security Block | 100% | 20% (1/5) | NOT MET |
+
+**Root Causes Identified:**
+1. **Security**: LLM generates dangerous code that passes AST check (4/5 attacks bypass)
+2. **Fetch Pattern**: Pure function pattern conflicts with fetch tasks that need yfinance
+3. **Tool Matching**: Keyword-based matching reuses wrong tools for similar-sounding tasks
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
-- Average duration: 2m 19s
-- Total execution time: ~0.23 hours
+- Total plans completed: 7
+- Average duration: 2m 24s
+- Total execution time: ~0.28 hours
 
 **By Phase:**
 
@@ -30,11 +45,7 @@ Progress: [████████░░] 86%
 | 01-allowlist-cleanup | 2/2 | 4m 27s | 2m 14s |
 | 02-prompt-engineering | 1/1 | 1m 49s | 1m 49s |
 | 03-refiner-pipeline | 2/2 | 4m 44s | 2m 22s |
-| 04-regression-verification | 1/2 | 3m 20s | 3m 20s |
-
-**Recent Trend:**
-- Last 5 plans: 02-01 (1m 49s), 03-01 (1m 44s), 03-02 (3m), 04-01 (3m 20s)
-- Trend: Stable (~2-3m per plan)
+| 04-regression-verification | 2/2 | ~9m | ~4m 30s |
 
 *Updated after each plan completion*
 
@@ -63,6 +74,8 @@ Recent decisions affecting current work:
 - [04-01]: Use raw ANSI codes for colors (no colorama dependency)
 - [04-01]: Three-state result classification (pass/fail/error) to distinguish API errors
 - [04-01]: Static baseline.json file with 13 task IDs for regression detection
+- [04-02]: **DATA SOURCE CHANGE**: Project now uses yfinance instead of akshare
+- [04-02]: CLAUDE.md updated to reflect yfinance as the data source
 
 ### Pending Todos
 
@@ -70,21 +83,24 @@ None.
 
 ### Blockers/Concerns
 
-- Some benchmark tasks may fail due to LLM nondeterminism even with correct prompts
-- RESOLVED: generate_tool_code() now includes text_response in return dict (fixed in 03-01)
+**Phase 5 must address:**
+1. Security AST check not blocking LLM-generated dangerous code (4/5 bypass)
+2. Pure function pattern (data-as-arguments) conflicts with fetch tasks that need to call yfinance
+3. Keyword-based `_infer_tool_name()` in run_eval.py matches wrong tools
+4. executor.py ALLOWED_MODULES has yfinance but pathlib should be removed
 
 ## Session Continuity
 
-Last session: 2026-02-02T11:14:00Z
-Stopped at: Completed 04-01-PLAN.md
+Last session: 2026-02-03T11:00:00Z
+Stopped at: Completed Phase 4 verification, issues documented
 Resume file: None
 
 ## Phase 4 Plans
 
 | Plan | Wave | Files | Status |
 |------|------|-------|--------|
-| 04-01 | 1 | baseline.json, run_eval.py | Complete (JSON output, colors, baseline, interrupt) |
-| 04-02 | 2 | (verification run) | Pending |
+| 04-01 | 1 | baseline.json, run_eval.py | Complete |
+| 04-02 | 2 | (verification run) | Complete (issues found) |
 
 ## Phase 4 Completed Enhancements
 
@@ -102,3 +118,12 @@ Resume file: None
 **baseline.json contains:**
 - 13 previously-passing task IDs (8 fetch + 2 calc + 3 composite)
 - Target pass rate: 0.80 (80%)
+
+## Phase 5 Scope (Gap Closure)
+
+**Issues to fix:**
+1. Security blocking improvements
+2. Fetch task pattern (allow yfinance calls in generated tools for fetch tasks)
+3. Tool matching (semantic similarity instead of keyword matching)
+
+**Entry point:** `/gsd:discuss-phase 5` or `/gsd:plan-phase 5`

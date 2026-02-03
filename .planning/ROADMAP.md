@@ -15,7 +15,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Allowlist Cleanup & Fallback Fix** - Remove talib from the system and stop mock fallback on timeout
 - [x] **Phase 2: Prompt Engineering for Correct Tool Generation** - Guide LLM to produce self-contained tools with correct data patterns
 - [x] **Phase 3: Refiner Pipeline Repair** - Fix error analysis and patch generation so the repair loop works
-- [ ] **Phase 4: Regression Verification** - Confirm all fixes work together without breaking existing passes
+- [x] **Phase 4: Regression Verification** - Confirm all fixes work together without breaking existing passes (ISSUES FOUND)
+- [ ] **Phase 5: Verification Gap Closure** - Fix security blocking, fetch task pattern, and tool matching issues identified in Phase 4
 
 ## Phase Details
 
@@ -75,8 +76,33 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 04-01-PLAN.md — Enhance run_eval.py with JSON output, colors, baseline comparison, registry clearing
-- [ ] 04-02-PLAN.md — Run full benchmark verification and confirm targets
+- [x] 04-01-PLAN.md — Enhance run_eval.py with JSON output, colors, baseline comparison, registry clearing
+- [x] 04-02-PLAN.md — Run full benchmark verification and confirm targets
+
+**Verification Results (2026-02-03):**
+- Pass Rate: 60% (12/20) — TARGET NOT MET (need 80%)
+- Regressions: 5 — TARGET NOT MET (need 0)
+- Security Block: 20% (1/5) — TARGET NOT MET (need 100%)
+
+Issues identified and documented for Phase 5.
+
+### Phase 5: Verification Gap Closure
+**Goal**: Fix the three root causes identified in Phase 4 verification to achieve 80% pass rate with proper security blocking
+**Depends on**: Phase 4 (issues must be diagnosed before fixing)
+**Requirements**: REGR-01, REGR-02 (still pending), plus new requirements for fixes
+**Success Criteria** (what must be TRUE):
+  1. Security AST check blocks all 5 security test cases (currently 1/5)
+  2. Fetch tasks use yfinance to actually retrieve data (not pure functions expecting data as arguments)
+  3. Tool matching uses semantic similarity, not just keyword matching
+  4. Pass rate >= 80% (16/20)
+  5. Zero regressions on baseline tasks
+**Plans**: TBD (to be created via /gsd:plan-phase 5)
+
+**Issues to Address:**
+1. **Security**: LLM generates dangerous code that passes AST check (4/5 attacks bypass)
+2. **Fetch Pattern**: Pure function pattern conflicts with tasks that need to fetch data via yfinance
+3. **Tool Matching**: Keyword-based `_infer_tool_name()` matches wrong tools to similar-sounding tasks
+4. **Data Source**: Project now uses yfinance (not akshare) — CLAUDE.md updated
 
 ## Progress
 
@@ -88,4 +114,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4
 | 1. Allowlist Cleanup & Fallback Fix | 2/2 | Complete | 2026-02-02 |
 | 2. Prompt Engineering for Correct Tool Generation | 1/1 | Complete | 2026-02-02 |
 | 3. Refiner Pipeline Repair | 2/2 | Complete | 2026-02-02 |
-| 4. Regression Verification | 0/2 | Not started | - |
+| 4. Regression Verification | 2/2 | Complete (Issues Found) | 2026-02-03 |
+| 5. Verification Gap Closure | 0/? | Not started | - |

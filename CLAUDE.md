@@ -13,7 +13,7 @@ This project reproduces the core tool evolution loop from the paper "Yunjue Agen
 | Principle | Implementation |
 |-----------|----------------|
 | Auditable | All generated code as `.py` files in `data/artifacts/`, Git trackable |
-| Reproducible | Frozen AkShare data via Parquet snapshots; locked dependency versions |
+| Reproducible | Frozen yfinance data via Parquet snapshots; locked dependency versions |
 | Secure | AST static analysis + subprocess sandboxing before code execution |
 
 ### Architecture
@@ -89,13 +89,13 @@ completion = client.chat.completions.create(
 |-----------|------|--------|
 | Global config | `src/config.py` | ✅ |
 | Data models (5 tables) | `src/core/models.py` | ✅ |
-| AkShare caching | `src/finance/data_proxy.py` | ✅ |
+| yfinance caching | `src/finance/data_proxy.py` | ✅ |
 | LLM adapter | `src/core/llm_adapter.py` | ✅ |
 | AST security + sandbox | `src/core/executor.py` | ✅ |
 | Tool registry | `src/core/registry.py` | ✅ |
 | Tool synthesizer | `src/evolution/synthesizer.py` | ✅ |
 | Tool refiner | `src/evolution/refiner.py` | ✅ |
-| Bootstrap tools | `src/finance/bootstrap.py` | ✅ |
+| Bootstrap tools (yfinance) | `src/finance/bootstrap.py` | ✅ |
 | Evaluation suite | `benchmarks/run_eval.py` | ✅ |
 | Benchmark tasks | `benchmarks/tasks.jsonl` | ✅ |
 | Run comparison | `benchmarks/compare_runs.py` | ✅ |
@@ -154,7 +154,7 @@ fin_evo_agent/
 ├── data/
 │   ├── db/evolution.db       # SQLite database
 │   ├── artifacts/
-│   │   ├── bootstrap/        # Initial AkShare tools
+│   │   ├── bootstrap/        # Initial yfinance tools
 │   │   └── generated/        # Evolved tools (e.g., calc_rsi_v0.1.0_xxx.py)
 │   ├── cache/                # [Git Ignore] Parquet snapshots
 │   └── logs/                 # thinking_process logs
@@ -169,8 +169,8 @@ fin_evo_agent/
 │   │   ├── synthesizer.py    # Generate → Verify → Register
 │   │   └── refiner.py        # Error Analysis → Patch → Re-verify
 │   └── finance/
-│       ├── data_proxy.py     # AkShare caching decorator
-│       └── bootstrap.py      # Initial AkShare tool set (5 tools)
+│       ├── data_proxy.py     # yfinance caching decorator
+│       └── bootstrap.py      # Initial yfinance tool set (5 tools)
 └── benchmarks/
     ├── tasks.jsonl            # 20 benchmark tasks (fetch/calc/composite)
     ├── security_tasks.jsonl   # 5 security test cases
@@ -193,7 +193,7 @@ fin_evo_agent/
 - Calls: `eval`, `exec`, `compile`, `__import__`, `globals`, `locals`, `vars`, `getattr`, `setattr`
 - Magic attributes: `__dict__`, `__class__`, `__bases__`, `__mro__`
 
-**Allowed Modules:** `pandas`, `numpy`, `datetime`, `json`, `math`, `decimal`, `collections`, `re`, `akshare`, `talib`, `typing`, `hashlib`, `pathlib`
+**Allowed Modules:** `pandas`, `numpy`, `datetime`, `json`, `math`, `decimal`, `collections`, `re`, `yfinance`, `typing`, `hashlib`
 
 **Sandbox:** subprocess isolation with 30s timeout.
 
@@ -205,7 +205,7 @@ fin_evo_agent/
 4. **Register**: If passed, store code on disk and metadata in DB
 5. **Refine**: On failure, analyze error and generate patch (max 3 attempts)
 
-## Data Proxy (AkShare Caching)
+## Data Proxy (yfinance Caching)
 
 The `@DataProvider.reproducible` decorator implements record-replay:
 - Cache key: MD5(func_name + args + kwargs)
