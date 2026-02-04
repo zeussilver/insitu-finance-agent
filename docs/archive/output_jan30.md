@@ -1,3 +1,10 @@
+> ⚠️ **ARCHIVED - NOT MAINTAINED**
+> This document reflects the pre-yfinance implementation (akshare-based).
+> For current documentation, see [CLAUDE.md](../../CLAUDE.md).
+> Archived on: 2026-02-04
+
+---
+
 # Yunjue Agent Evaluation Report
 
 **Test Date:** 2026-01-30

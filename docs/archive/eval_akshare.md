@@ -1,3 +1,10 @@
+> ⚠️ **ARCHIVED - NOT MAINTAINED**
+> This document reflects the pre-yfinance implementation (akshare-based).
+> For current documentation, see [CLAUDE.md](../../CLAUDE.md).
+> Archived on: 2026-02-04
+
+---
+
 # Phase 1a 评测规格 (eval.md)
 > SSOT v1 | 金融自进化 Agent 复现 | 2026-01-29
 
@@ -211,7 +218,7 @@ python benchmarks/compare_runs.py run1 run2
 def cache_hit_rate():
     """
     统计 data/cache/ 目录下 Parquet 文件的使用情况
-    
+
     期望: 评测期间 100% 命中缓存 (无网络请求)
     """
 ```
@@ -222,7 +229,7 @@ def cache_hit_rate():
 def regression_test(run1_results: dict, run2_results: dict) -> float:
     """
     对比两次运行的输出是否一致
-    
+
     Returns:
         一致率 (期望 100%)
     """

@@ -1,3 +1,10 @@
+> ⚠️ **ARCHIVED - NOT MAINTAINED**
+> This document reflects the pre-yfinance implementation (akshare-based).
+> For current documentation, see [CLAUDE.md](../../CLAUDE.md).
+> Archived on: 2026-02-04
+
+---
+
 # Work Handoff — Yunjue Agent (fin_evo_agent)
 
 **Last updated:** 2026-01-31

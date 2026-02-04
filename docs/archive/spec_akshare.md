@@ -1,3 +1,10 @@
+> ⚠️ **ARCHIVED - NOT MAINTAINED**
+> This document reflects the pre-yfinance implementation (akshare-based).
+> For current documentation, see [CLAUDE.md](../../CLAUDE.md).
+> Archived on: 2026-02-04
+
+---
+
 # Phase 1a 技术规格 (spec.md)
 > SSOT v1 | 金融自进化 Agent 复现 | 2026-01-29
 
@@ -95,8 +102,8 @@ class Permission(str, Enum):
 ```python
 class LLMAdapter:
     """Qwen3 深度适配器"""
-    
-    def __init__(self, 
+
+    def __init__(self,
                  model: str = "qwen3-max-thinking",
                  temperature: float = 0.1,
                  enable_thinking: bool = True):
@@ -106,11 +113,11 @@ class LLMAdapter:
             temperature: 采样温度 (0.0-1.0)
             enable_thinking: 是否启用思维链
         """
-    
+
     def _clean_protocol(self, raw_content: str) -> dict:
         """
         协议清洗：剥离思考过程，提取代码载荷
-        
+
         Returns:
             {
                 "thought_trace": str,   # <think>...</think> 内容
@@ -118,17 +125,17 @@ class LLMAdapter:
                 "text_response": str    # 清洗后的文本
             }
         """
-    
-    def generate_tool_code(self, 
-                           task: str, 
+
+    def generate_tool_code(self,
+                           task: str,
                            error_context: Optional[str] = None) -> dict:
         """
         生成工具代码
-        
+
         Args:
             task: 任务描述
             error_context: 上次执行的错误信息 (用于修复场景)
-        
+
         Returns:
             {
                 "thought_trace": str,
@@ -149,13 +156,13 @@ class LLMAdapter:
 ```python
 class ToolRegistry:
     """工具注册与检索"""
-    
-    def __init__(self, 
+
+    def __init__(self,
                  db_path: str = "data/evolution.db",
                  artifacts_dir: str = "data/artifacts"):
         pass
-    
-    def register(self, 
+
+    def register(self,
                  name: str,
                  code: str,
                  args_schema: dict,
@@ -163,23 +170,23 @@ class ToolRegistry:
                  test_cases: List[dict]) -> ToolArtifact:
         """
         注册新工具
-        
+
         流程:
         1. 计算 content_hash (SHA256)
         2. 检查 hash 是否已存在 (去重)
         3. 写入文件到 artifacts_dir/generated/
         4. 插入 DB 记录
-        
+
         Returns:
             新创建的 ToolArtifact
         """
-    
+
     def retrieve_by_name(self, name: str) -> Optional[ToolArtifact]:
         """按名称检索工具"""
-    
+
     def retrieve_by_hash(self, content_hash: str) -> Optional[ToolArtifact]:
         """按哈希检索工具 (去重用)"""
-    
+
     def search_similar(self, query: str, top_k: int = 5) -> List[ToolArtifact]:
         """
         语义相似检索 (Phase 1a 为 Stub，返回空列表)
@@ -192,35 +199,35 @@ class ToolRegistry:
 ```python
 class ToolExecutor:
     """安全执行器"""
-    
-    BANNED_MODULES = {'os', 'sys', 'subprocess', 'shutil', 
+
+    BANNED_MODULES = {'os', 'sys', 'subprocess', 'shutil',
                       'builtins', 'importlib', 'ctypes', 'socket'}
-    
-    BANNED_CALLS = {'eval', 'exec', 'compile', '__import__', 
+
+    BANNED_CALLS = {'eval', 'exec', 'compile', '__import__',
                     'open',  # 需特殊处理：只允许 mode='r'
                     'globals', 'locals', 'vars'}
-    
-    ALLOWED_MODULES = {'pandas', 'numpy', 'datetime', 'json', 
+
+    ALLOWED_MODULES = {'pandas', 'numpy', 'datetime', 'json',
                        'math', 'decimal', 'collections', 're',
                        'akshare',  # 通过 data_proxy 封装
                        'talib'}    # 技术指标库
-    
+
     def static_check(self, code: str) -> Tuple[bool, Optional[str]]:
         """
         AST 静态检查
-        
+
         Returns:
             (is_safe, error_message)
         """
-    
-    def run_with_limit(self, 
-                       tool_path: str, 
+
+    def run_with_limit(self,
+                       tool_path: str,
                        args: dict,
                        timeout_sec: int = 30,
                        memory_limit_mb: int = 512) -> ExecutionTrace:
         """
         沙箱执行
-        
+
         使用 subprocess.run:
         - 独立进程
         - 超时控制
@@ -242,13 +249,13 @@ class ToolExecutor:
 ```python
 class Synthesizer:
     """工具合成器：生成 → 验证 → 注册"""
-    
-    def __init__(self, 
+
+    def __init__(self,
                  llm: LLMAdapter,
                  executor: ToolExecutor,
                  registry: ToolRegistry):
         pass
-    
+
     def synthesize(self, task: str) -> Tuple[Optional[ToolArtifact], ExecutionTrace]:
         """
         合成流程:
@@ -256,7 +263,7 @@ class Synthesizer:
         2. 静态安全检查
         3. 执行内置测试 (if __name__ == '__main__')
         4. 若通过，注册到 Registry
-        
+
         Returns:
             (tool, trace) - tool 可能为 None (生成失败)
         """
@@ -267,14 +274,14 @@ class Synthesizer:
 ```python
 class Refiner:
     """工具修复器：错误分析 → 补丁"""
-    
+
     def __init__(self,
                  llm: LLMAdapter,
                  executor: ToolExecutor,
                  registry: ToolRegistry):
         pass
-    
-    def refine(self, 
+
+    def refine(self,
                error_report: ErrorReport,
                max_attempts: int = 3) -> Tuple[Optional[ToolArtifact], List[ExecutionTrace]]:
         """
@@ -284,7 +291,7 @@ class Refiner:
         3. 验证补丁
         4. 创建 ToolPatch 记录
         5. 注册新版本工具
-        
+
         Returns:
             (new_tool, traces) - new_tool 可能为 None (修复失败)
         """
@@ -301,7 +308,7 @@ def reproducible_akshare(func):
     - Key: MD5(func_name + str(args) + str(kwargs))
     - Storage: data/cache/{key}.parquet
     - 优先回放缓存，否则录制
-    
+
     数据清洗:
     - 所有列转为 str 类型 (确保 Parquet 兼容)
     - 时间戳统一为 UTC

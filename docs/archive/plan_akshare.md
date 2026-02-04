@@ -1,3 +1,10 @@
+> ⚠️ **ARCHIVED - NOT MAINTAINED**
+> This document reflects the pre-yfinance implementation (akshare-based).
+> For current documentation, see [CLAUDE.md](../../CLAUDE.md).
+> Archived on: 2026-02-04
+
+---
+
 # Phase 1a 项目规划 (plan.md)
 > SSOT v1 | 金融自进化 Agent 复现 | 2026-01-29
 

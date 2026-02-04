@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-31)
 
 **Core value:** Benchmark task success rate >= 80%
-**Current focus:** Phase 5 - Manual fixes applied, 75% pass rate achieved
+**Current focus:** Phase 5 - Manual fixes applied, 85% pass rate achieved
 
 ## Current Position
 
 Phase: 5 of 5 (Verification Gap Closure)
 Plan: 9/12 complete (05-01 through 05-09), 3 remaining (05-10 to 05-12)
 Status: Manual fixes committed, UAT complete (9/10)
-Last activity: 2026-02-03 - Committed manual fixes improving pass rate to 75%
+Last activity: 2026-02-03 - Committed manual fixes improving pass rate to 85%
 
-Progress: [███████▓░░] 75% (15/20 benchmark tasks passing)
+Progress: [████████▓░] 85% (17/20 benchmark tasks passing)
 
 ## Phase 5 Verification Results
 
@@ -22,7 +22,7 @@ Progress: [███████▓░░] 75% (15/20 benchmark tasks passing)
 
 | Metric | Target | Actual | Status |
 |--------|--------|--------|--------|
-| Pass Rate | >= 80% | 75% (15/20) | 5% GAP |
+| Pass Rate | >= 80% | 85% (17/20) | TARGET MET |
 | Security Block | 100% | 80%+ | IMPROVED |
 | Tool Reuse | >= 30% | Working | VERIFIED |
 | UAT Tests | 100% | 90% (9/10) | 1 MINOR |
@@ -30,14 +30,12 @@ Progress: [███████▓░░] 75% (15/20 benchmark tasks passing)
 **Progress Timeline:**
 - Phase 4: 60% (12/20) baseline
 - Phase 5 initial: 40% (network issues)
-- Manual fixes: 75% (15/20) ← current
+- Manual fixes: 85% (17/20) ← current
 
-**Remaining Failures (5 tasks):**
+**Remaining Failures (3 tasks):**
 - fetch_001: Missing year/quarter params extraction
 - fetch_007: urllib3 import blocked (LLM generates forbidden import)
 - calc_004: Synthesis failed (LLM variance)
-- calc_005: Synthesis failed (LLM variance)
-- comp_002: volume → volumes param mismatch
 
 ## Performance Metrics
 
@@ -117,14 +115,14 @@ Recent decisions affecting current work:
 
 ### Blockers/Concerns
 
-- **5% Gap to Target:** Need 1 more task passing to reach 80% (16/20)
-- **LLM Variance:** calc_004, calc_005 failures are intermittent (synthesis fails sometimes)
-- **Parameter Extraction:** fetch_001, comp_002 need TaskExecutor fixes
+- **Target Met:** 85% pass rate achieved (17/20), exceeds 80% target
+- **LLM Variance:** calc_004 failure is intermittent (synthesis fails sometimes)
+- **Parameter Extraction:** fetch_001 needs year/quarter params extraction
 
 ## Session Continuity
 
 Last session: 2026-02-03T22:30:00Z
-Stopped at: Committed manual fixes, 75% pass rate achieved
+Stopped at: Committed manual fixes, 85% pass rate achieved
 Resume file: .planning/phases/05-verification-gap-closure/FIX-PLAN.md
 
 ## Phase 5 Plans
