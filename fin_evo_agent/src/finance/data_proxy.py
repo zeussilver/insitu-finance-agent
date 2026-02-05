@@ -10,6 +10,9 @@ Features:
 
 Cache key: MD5(func_name + args + kwargs)
 Storage: data/cache/{key}.parquet
+
+Note: This module provides the legacy DataProvider class with @reproducible decorator.
+For new code, prefer using the adapter-based approach in src.data.adapters.
 """
 
 import hashlib
@@ -17,7 +20,7 @@ import json
 import time
 from functools import wraps
 from pathlib import Path
-from typing import Callable, TypeVar
+from typing import Callable, TypeVar, Optional
 
 import yfinance as yf
 import pandas as pd
@@ -25,6 +28,17 @@ import pandas as pd
 import sys
 sys.path.insert(0, str(__file__).rsplit("/", 3)[0])
 from src.config import CACHE_DIR
+
+
+# Re-export adapter for convenience
+def get_data_adapter():
+    """Get the default data adapter (yfinance with caching).
+
+    Prefer using this function for new code instead of the legacy
+    DataProvider.reproducible decorator.
+    """
+    from src.data.adapters.yfinance_adapter import YFinanceAdapter
+    return YFinanceAdapter()
 
 
 # Network retry configuration
@@ -232,15 +246,6 @@ def get_etf_hist(symbol: str, start: str, end: str) -> pd.DataFrame:
 
 
 if __name__ == "__main__":
-    # Test bootstrap tools
-    print("Testing bootstrap tools...")
-
-    # Test stock history
-    df = get_stock_hist("AAPL", "2023-01-01", "2023-01-31")
-    print(f"Stock hist: {len(df)} rows")
-
-    # Test again (should hit cache)
-    df = get_stock_hist("AAPL", "2023-01-01", "2023-01-31")
-    print(f"Stock hist (cached): {len(df)} rows")
-
-    print("Bootstrap tools test completed.")
+    # Self-tests moved to tests/data/test_adapters.py
+    # This block is kept minimal for module verification
+    print("DataProvider module loaded. Run pytest tests/data/test_adapters.py for tests.")

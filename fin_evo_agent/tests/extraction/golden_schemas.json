@@ -1,0 +1,486 @@
+{
+  "version": "1.0.0",
+  "description": "Golden test set for schema extraction validation. 50+ test cases.",
+  "test_cases": [
+    {
+      "id": 1,
+      "task": "获取 AAPL 股票从 2023-01-01 到 2023-01-31 的历史数据",
+      "expected": {
+        "category": "fetch",
+        "symbols": ["AAPL"],
+        "date_range": {"start": "2023-01-01", "end": "2023-01-31"},
+        "output_type": "dataframe"
+      }
+    },
+    {
+      "id": 2,
+      "task": "计算 AAPL 股票的 14 日 RSI 指标",
+      "expected": {
+        "category": "calculation",
+        "indicators": ["rsi"],
+        "output_type": "numeric"
+      }
+    },
+    {
+      "id": 3,
+      "task": "Calculate the 20-day moving average for MSFT",
+      "expected": {
+        "category": "calculation",
+        "indicators": ["ma"],
+        "output_type": "numeric"
+      }
+    },
+    {
+      "id": 4,
+      "task": "判断 AAPL 是否出现 MACD 和 RSI 背离信号",
+      "expected": {
+        "category": "composite",
+        "indicators": ["rsi", "macd"],
+        "output_type": "boolean"
+      }
+    },
+    {
+      "id": 5,
+      "task": "Get TSLA financial information",
+      "expected": {
+        "category": "fetch",
+        "output_type": "dict"
+      }
+    },
+    {
+      "id": 6,
+      "task": "计算 AAPL 和 MSFT 的相关系数",
+      "expected": {
+        "category": "calculation",
+        "indicators": ["correlation"],
+        "output_type": "numeric"
+      }
+    },
+    {
+      "id": 7,
+      "task": "获取苹果公司 AAPL 2024年第一季度的财务报表",
+      "expected": {
+        "category": "fetch",
+        "symbols": ["AAPL"],
+        "output_type": "dataframe"
+      }
+    },
+    {
+      "id": 8,
+      "task": "计算布林带指标 (20日均线，2倍标准差)",
+      "expected": {
+        "category": "calculation",
+        "indicators": ["bollinger"],
+        "output_type": "dict"
+      }
+    },
+    {
+      "id": 9,
+      "task": "查询 ^GSPC 标普500指数从 2023-06-01 到 2023-12-31 的日线数据",
+      "expected": {
+        "category": "fetch",
+        "symbols": ["^GSPC"],
+        "date_range": {"start": "2023-06-01", "end": "2023-12-31"},
+        "output_type": "dataframe"
+      }
+    },
+    {
+      "id": 10,
+      "task": "Calculate MACD indicator with fast=12, slow=26, signal=9",
+      "expected": {
+        "category": "calculation",
+        "indicators": ["macd"],
+        "output_type": "dict"
+      }
+    },
+    {
+      "id": 11,
+      "task": "获取特斯拉 TSLA 最新报价",
+      "expected": {
+        "category": "fetch",
+        "symbols": ["TSLA"],
+        "output_type": "dict"
+      }
+    },
+    {
+      "id": 12,
+      "task": "计算过去30天的波动率",
+      "expected": {
+        "category": "calculation",
+        "indicators": ["volatility"],
+        "output_type": "numeric"
+      }
+    },
+    {
+      "id": 13,
+      "task": "判断是否应该买入 - 当 RSI < 30 且价格突破20日均线",
+      "expected": {
+        "category": "composite",
+        "indicators": ["rsi", "ma"],
+        "output_type": "boolean"
+      }
+    },
+    {
+      "id": 14,
+      "task": "计算最大回撤",
+      "expected": {
+        "category": "calculation",
+        "indicators": ["drawdown"],
+        "output_type": "numeric"
+      }
+    },
+    {
+      "id": 15,
+      "task": "Get historical data for GOOGL from 2024-01-01 to 2024-03-31",
+      "expected": {
+        "category": "fetch",
+        "symbols": ["GOOGL"],
+        "date_range": {"start": "2024-01-01", "end": "2024-03-31"},
+        "output_type": "dataframe"
+      }
+    },
+    {
+      "id": 16,
+      "task": "计算 KDJ 随机指标 (k=9, d=3)",
+      "expected": {
+        "category": "calculation",
+        "indicators": ["kdj"],
+        "output_type": "dict"
+      }
+    },
+    {
+      "id": 17,
+      "task": "获取多只股票 AAPL,MSFT,GOOGL 的实时行情",
+      "expected": {
+        "category": "fetch",
+        "output_type": "dataframe"
+      }
+    },
+    {
+      "id": 18,
+      "task": "判断 MACD 金叉信号",
+      "expected": {
+        "category": "composite",
+        "indicators": ["macd"],
+        "output_type": "boolean"
+      }
+    },
+    {
+      "id": 19,
+      "task": "计算 5 日、10 日、20 日移动平均线",
+      "expected": {
+        "category": "calculation",
+        "indicators": ["ma"],
+        "output_type": "dict"
+      }
+    },
+    {
+      "id": 20,
+      "task": "Fetch SPY ETF data for the year 2023",
+      "expected": {
+        "category": "fetch",
+        "output_type": "dataframe"
+      }
+    },
+    {
+      "id": 21,
+      "task": "计算 EMA 指数移动平均 (周期12)",
+      "expected": {
+        "category": "calculation",
+        "indicators": ["ema"],
+        "output_type": "numeric"
+      }
+    },
+    {
+      "id": 22,
+      "task": "获取纳斯达克指数 ^IXIC 行情",
+      "expected": {
+        "category": "fetch",
+        "symbols": ["^IXIC"],
+        "output_type": "dict"
+      }
+    },
+    {
+      "id": 23,
+      "task": "综合判断多指标买卖信号",
+      "expected": {
+        "category": "composite",
+        "output_type": "boolean"
+      }
+    },
+    {
+      "id": 24,
+      "task": "计算年化收益率",
+      "expected": {
+        "category": "calculation",
+        "output_type": "numeric"
+      }
+    },
+    {
+      "id": 25,
+      "task": "Get the latest price for NVDA",
+      "expected": {
+        "category": "fetch",
+        "symbols": ["NVDA"],
+        "output_type": "dict"
+      }
+    },
+    {
+      "id": 26,
+      "task": "计算夏普比率",
+      "expected": {
+        "category": "calculation",
+        "output_type": "numeric"
+      }
+    },
+    {
+      "id": 27,
+      "task": "判断价格是否突破布林带上轨",
+      "expected": {
+        "category": "composite",
+        "indicators": ["bollinger"],
+        "output_type": "boolean"
+      }
+    },
+    {
+      "id": 28,
+      "task": "获取 AMD 股票的收盘价序列",
+      "expected": {
+        "category": "fetch",
+        "symbols": ["AMD"],
+        "output_type": "dataframe"
+      }
+    },
+    {
+      "id": 29,
+      "task": "计算 ATR 真实波幅指标",
+      "expected": {
+        "category": "calculation",
+        "output_type": "numeric"
+      }
+    },
+    {
+      "id": 30,
+      "task": "检查是否满足入场条件：RSI超卖 + MACD金叉",
+      "expected": {
+        "category": "composite",
+        "indicators": ["rsi", "macd"],
+        "output_type": "boolean"
+      }
+    },
+    {
+      "id": 31,
+      "task": "获取道琼斯指数 ^DJI 历史数据",
+      "expected": {
+        "category": "fetch",
+        "symbols": ["^DJI"],
+        "output_type": "dataframe"
+      }
+    },
+    {
+      "id": 32,
+      "task": "计算价格动量指标",
+      "expected": {
+        "category": "calculation",
+        "output_type": "numeric"
+      }
+    },
+    {
+      "id": 33,
+      "task": "判断趋势方向 (上涨/下跌/盘整)",
+      "expected": {
+        "category": "composite",
+        "output_type": "dict"
+      }
+    },
+    {
+      "id": 34,
+      "task": "获取 META 过去一个月的交易量数据",
+      "expected": {
+        "category": "fetch",
+        "symbols": ["META"],
+        "output_type": "dataframe"
+      }
+    },
+    {
+      "id": 35,
+      "task": "计算价格与均线的偏离度",
+      "expected": {
+        "category": "calculation",
+        "indicators": ["ma"],
+        "output_type": "numeric"
+      }
+    },
+    {
+      "id": 36,
+      "task": "获取 BABA 阿里巴巴的财务数据",
+      "expected": {
+        "category": "fetch",
+        "symbols": ["BABA"],
+        "output_type": "dataframe"
+      }
+    },
+    {
+      "id": 37,
+      "task": "计算日收益率序列",
+      "expected": {
+        "category": "calculation",
+        "output_type": "dataframe"
+      }
+    },
+    {
+      "id": 38,
+      "task": "判断超买超卖状态",
+      "expected": {
+        "category": "composite",
+        "indicators": ["rsi"],
+        "output_type": "boolean"
+      }
+    },
+    {
+      "id": 39,
+      "task": "获取 VIX 恐慌指数数据",
+      "expected": {
+        "category": "fetch",
+        "output_type": "dataframe"
+      }
+    },
+    {
+      "id": 40,
+      "task": "计算均值回归概率",
+      "expected": {
+        "category": "calculation",
+        "output_type": "numeric"
+      }
+    },
+    {
+      "id": 41,
+      "task": "Get OHLCV data for AMZN for Q4 2023",
+      "expected": {
+        "category": "fetch",
+        "symbols": ["AMZN"],
+        "output_type": "dataframe"
+      }
+    },
+    {
+      "id": 42,
+      "task": "计算威廉指标 Williams %R",
+      "expected": {
+        "category": "calculation",
+        "output_type": "numeric"
+      }
+    },
+    {
+      "id": 43,
+      "task": "判断双底形态是否成立",
+      "expected": {
+        "category": "composite",
+        "output_type": "boolean"
+      }
+    },
+    {
+      "id": 44,
+      "task": "获取所有科技股行情",
+      "expected": {
+        "category": "fetch",
+        "output_type": "dataframe"
+      }
+    },
+    {
+      "id": 45,
+      "task": "计算资金流向指标",
+      "expected": {
+        "category": "calculation",
+        "output_type": "numeric"
+      }
+    },
+    {
+      "id": 46,
+      "task": "判断量价背离",
+      "expected": {
+        "category": "composite",
+        "output_type": "boolean"
+      }
+    },
+    {
+      "id": 47,
+      "task": "获取 JD 京东的季度财报",
+      "expected": {
+        "category": "fetch",
+        "symbols": ["JD"],
+        "output_type": "dataframe"
+      }
+    },
+    {
+      "id": 48,
+      "task": "计算投资组合的 Beta 值",
+      "expected": {
+        "category": "calculation",
+        "output_type": "numeric"
+      }
+    },
+    {
+      "id": 49,
+      "task": "组合策略：当满足条件时发出交易信号",
+      "expected": {
+        "category": "composite",
+        "output_type": "boolean"
+      }
+    },
+    {
+      "id": 50,
+      "task": "获取实时汇率 USD/CNY",
+      "expected": {
+        "category": "fetch",
+        "output_type": "dict"
+      }
+    },
+    {
+      "id": 51,
+      "task": "计算加权移动平均线 WMA",
+      "expected": {
+        "category": "calculation",
+        "indicators": ["ma"],
+        "output_type": "numeric"
+      }
+    },
+    {
+      "id": 52,
+      "task": "判断是否处于牛市行情",
+      "expected": {
+        "category": "composite",
+        "output_type": "boolean"
+      }
+    },
+    {
+      "id": 53,
+      "task": "获取 INTC 英特尔2023年全年数据",
+      "expected": {
+        "category": "fetch",
+        "symbols": ["INTC"],
+        "output_type": "dataframe"
+      }
+    },
+    {
+      "id": 54,
+      "task": "计算索提诺比率 Sortino Ratio",
+      "expected": {
+        "category": "calculation",
+        "output_type": "numeric"
+      }
+    },
+    {
+      "id": 55,
+      "task": "判断三角形整理形态",
+      "expected": {
+        "category": "composite",
+        "output_type": "boolean"
+      }
+    }
+  ],
+  "category_rules": {
+    "fetch": ["获取", "查询", "取得", "fetch", "get", "query", "行情", "报价", "历史", "财务"],
+    "calculation": ["计算", "算", "calculate", "compute", "指标"],
+    "composite": ["组合", "综合", "判断", "信号", "策略", "背离"]
+  }
+}

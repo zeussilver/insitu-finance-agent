@@ -1,12 +1,15 @@
 {
   "mode": "yolo",
   "depth": "standard",
-  "parallelization": false,
+  "parallelization": true,
   "commit_docs": true,
-  "model_profile": "quality",
+  "model_profile": "quality-full",
   "workflow": {
     "research": true,
     "plan_check": true,
     "verifier": true
+  },
+  "git": {
+    "branching_strategy": "milestone"
   }
 }

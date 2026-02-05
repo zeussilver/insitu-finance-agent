@@ -7,3 +7,7 @@
 2026-02-03T16:11:23.029643 | refine_0 | Unallowed import from: urllib3
 2026-02-03T16:40:32.416689 | refine_2 | Banned call: hasattr
 2026-02-03T16:42:19.641145 | refine_0 | Suspicious string literal containing: open
+2026-02-04T20:43:49.090256 | test_task | Banned import: os
+2026-02-04T20:43:49.313571 | test_timeout | Unallowed import: time
+2026-02-04T20:43:58.600612 | test_task | Banned import: os
+2026-02-04T20:43:58.822768 | test_timeout | Unallowed import: time

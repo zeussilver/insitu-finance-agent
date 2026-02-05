@@ -110,6 +110,11 @@ class ExecutionTrace(SQLModel, table=True):
     std_err: Optional[str] = Field(default=None, sa_column=Column(Text))
     execution_time_ms: int = Field(default=0)
 
+    # Code that was executed (P0-3: Fix code/trace mismatch)
+    # Stores the exact code that produced this trace, enabling Refiner to patch
+    # the correct version instead of regenerated code
+    code_content: Optional[str] = Field(default=None, sa_column=Column(Text))
+
     # LLM and environment info
     llm_config: Dict = Field(default={}, sa_column=Column(JSON))
     env_snapshot: Dict = Field(default={}, sa_column=Column(JSON))
@@ -198,11 +203,37 @@ def _migrate_tool_artifacts(engine):
                 conn.commit()
 
 
+def _migrate_execution_traces(engine):
+    """Add new columns to execution_traces if they don't exist.
+
+    P0-3: Add code_content field to store the exact code that was executed,
+    enabling Refiner to patch the correct version.
+    """
+    from sqlalchemy import text, inspect
+
+    inspector = inspect(engine)
+    if 'execution_traces' not in inspector.get_table_names():
+        return  # Table doesn't exist yet, will be created by create_all
+
+    existing_columns = {col['name'] for col in inspector.get_columns('execution_traces')}
+
+    new_columns = [
+        ('code_content', 'TEXT'),  # P0-3: Store executed code for trace/code alignment
+    ]
+
+    with engine.connect() as conn:
+        for col_name, col_type in new_columns:
+            if col_name not in existing_columns:
+                conn.execute(text(f'ALTER TABLE execution_traces ADD COLUMN {col_name} {col_type}'))
+                conn.commit()
+
+
 def init_db():
     """Create all tables in the database."""
     engine = create_engine(DB_URL)
     # First migrate existing tables
     _migrate_tool_artifacts(engine)
+    _migrate_execution_traces(engine)
     # Then create any missing tables
     SQLModel.metadata.create_all(engine)
     return engine

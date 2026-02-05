@@ -24,7 +24,7 @@ from src.config import DB_PATH, GENERATED_DIR, CACHE_DIR
 from src.core.models import init_db
 from src.core.registry import ToolRegistry
 from src.core.executor import ToolExecutor
-from src.core.llm_adapter import LLMAdapter
+from src.core.llm_adapter import create_llm_adapter
 from src.evolution.synthesizer import Synthesizer
 from src.finance.data_proxy import get_stock_hist
 from src.finance.bootstrap import create_bootstrap_tools
@@ -69,7 +69,7 @@ def cmd_task(task: str):
     # Initialize components
     registry = ToolRegistry()
     executor = ToolExecutor()
-    llm = LLMAdapter()
+    llm = create_llm_adapter()
     synthesizer = Synthesizer(llm, executor, registry)
 
     # Step 1: Try to get context data
