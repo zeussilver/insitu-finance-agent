@@ -119,6 +119,7 @@ class VerificationGateway:
         task_id: str = "unknown",
         real_data: Optional[Dict[str, Any]] = None,
         force: bool = False,
+        name: Optional[str] = None,
     ) -> Tuple[bool, Optional[ToolArtifact], VerificationReport]:
         """Submit a tool for verification and registration.
 
@@ -134,6 +135,7 @@ class VerificationGateway:
             task_id: Task identifier for tracing
             real_data: Optional real data for integration testing (fetch tools)
             force: If True, skip gatekeeper approval (for testing only)
+            name: Optional explicit tool name (overrides auto-extraction)
 
         Returns:
             (success, tool, report) - tool is None if verification failed
@@ -141,10 +143,14 @@ class VerificationGateway:
         Raises:
             VerificationError: If verification fails
         """
-        # Extract function name for logging
+        # Extract function name for logging (prefer explicit name, then public functions)
         import re
-        match = re.search(r'^def\s+(\w+)\s*\(', code, re.MULTILINE)
-        func_name = match.group(1) if match else "unknown"
+        if name:
+            func_name = name
+        else:
+            # Find public functions (not starting with _)
+            public_funcs = re.findall(r'^def\s+([a-zA-Z][a-zA-Z0-9_]*)\s*\(', code, re.MULTILINE)
+            func_name = public_funcs[0] if public_funcs else "unknown"
 
         # Resolve contract
         if contract is None and contract_id:
@@ -229,7 +235,7 @@ class VerificationGateway:
             tool = self.registry.register(
                 name=func_name,
                 code=code,
-                args_schema=self._extract_args_schema(code),
+                args_schema=self._extract_args_schema(code, func_name),
                 permissions=permissions,
             )
 
@@ -311,15 +317,27 @@ class VerificationGateway:
                 session.add(tool)
                 session.commit()
 
-    def _extract_args_schema(self, code: str) -> Dict[str, str]:
-        """Extract argument schema from function signature."""
-        import re
+    def _extract_args_schema(self, code: str, func_name: Optional[str] = None) -> Dict[str, str]:
+        """Extract argument schema from function signature.
+
+        Args:
+            code: Python source code
+            func_name: Optional specific function name to extract schema from.
+                      If None, finds first public function (not starting with _).
+        """
         import ast
 
         try:
             tree = ast.parse(code)
             for node in ast.walk(tree):
                 if isinstance(node, ast.FunctionDef):
+                    # Skip private functions unless explicitly requested
+                    if func_name:
+                        if node.name != func_name:
+                            continue
+                    elif node.name.startswith('_'):
+                        continue
+
                     schema = {}
                     for arg in node.args.args:
                         arg_name = arg.arg
