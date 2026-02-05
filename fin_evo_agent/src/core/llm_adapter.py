@@ -15,7 +15,10 @@ if TYPE_CHECKING:
 
 import sys
 sys.path.insert(0, str(__file__).rsplit("/", 3)[0])
-from src.config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, LLM_TEMPERATURE, LLM_ENABLE_THINKING
+from src.config import (
+    LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, LLM_TEMPERATURE, LLM_ENABLE_THINKING,
+    LLM_TYPE
+)
 
 
 # === Category-Specific System Prompts ===
@@ -669,6 +672,43 @@ if __name__ == "__main__":
 
     print("All tests passed!")
 ```'''
+
+
+def create_llm_adapter(llm_type: str = None) -> 'LLMAdapter':
+    """
+    Factory function to create the appropriate LLM adapter.
+
+    Args:
+        llm_type: Override for LLM_TYPE config. Options:
+            - "api": Use OpenAI-compatible API (default, DashScope/vLLM/Ollama)
+            - "transformers": Use local HuggingFace transformers
+            - "local": Alias for "api" with local endpoint (vLLM/Ollama)
+
+    Returns:
+        LLMAdapter instance (API-based or local)
+
+    Usage:
+        # API mode (default)
+        llm = create_llm_adapter()
+
+        # Local vLLM server (set LLM_BASE_URL=http://localhost:8000/v1)
+        os.environ["LLM_TYPE"] = "local"
+        llm = create_llm_adapter()
+
+        # Direct transformers (GPU)
+        os.environ["LLM_TYPE"] = "transformers"
+        llm = create_llm_adapter()
+    """
+    llm_type = llm_type or LLM_TYPE
+
+    if llm_type == "transformers":
+        # Use local GPU inference via transformers
+        from src.core.llm_adapter_local import LocalLLMAdapter
+        return LocalLLMAdapter()
+    else:
+        # Use OpenAI-compatible API (works for DashScope, vLLM, Ollama)
+        # "api" and "local" both use this - difference is in LLM_BASE_URL
+        return LLMAdapter()
 
 
 if __name__ == "__main__":

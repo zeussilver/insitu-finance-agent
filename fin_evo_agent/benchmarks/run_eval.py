@@ -34,7 +34,7 @@ from src.config import ROOT_DIR, GENERATED_DIR
 from src.core.models import init_db, get_engine, ToolArtifact
 from src.core.registry import ToolRegistry
 from src.core.executor import ToolExecutor
-from src.core.llm_adapter import LLMAdapter
+from src.core.llm_adapter import create_llm_adapter
 from src.evolution.synthesizer import Synthesizer
 from src.finance.data_proxy import get_stock_hist
 from src.core.task_executor import TaskExecutor
@@ -254,7 +254,7 @@ class EvalRunner:
         init_db()
         self.registry = ToolRegistry()
         self.executor = ToolExecutor()
-        self.llm = LLMAdapter()
+        self.llm = create_llm_adapter()
         self.verifier = MultiStageVerifier(self.executor, self.registry)
         self.synthesizer = Synthesizer(self.llm, self.executor, self.registry, self.verifier)
         self.task_executor = TaskExecutor(self.registry, self.executor)

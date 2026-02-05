@@ -21,7 +21,7 @@ from sqlmodel import Session
 
 import sys
 sys.path.insert(0, str(__file__).rsplit("/", 3)[0])
-from src.core.llm_adapter import LLMAdapter
+from src.core.llm_adapter import LLMAdapter, create_llm_adapter
 from src.core.executor import ToolExecutor
 from src.core.registry import ToolRegistry
 from src.core.models import (
@@ -133,7 +133,7 @@ class Refiner:
         gateway: VerificationGateway = None,
         gatekeeper: EvolutionGatekeeper = None,
     ):
-        self.llm = llm or LLMAdapter()
+        self.llm = llm or create_llm_adapter()
         self.executor = executor or ToolExecutor()
         self.registry = registry or ToolRegistry()
         self.gateway = gateway or get_gateway()

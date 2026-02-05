@@ -32,12 +32,23 @@ LOGS_DIR = DATA_DIR / "logs"
 for p in [BOOTSTRAP_DIR, GENERATED_DIR, CACHE_DIR, LOGS_DIR, DB_PATH.parent]:
     p.mkdir(parents=True, exist_ok=True)
 
-# LLM Configuration (Qwen3 via DashScope OpenAI-compatible API)
+# LLM Configuration
+# Supports: "api" (DashScope), "local" (vLLM/Ollama), "transformers" (direct HF)
+LLM_TYPE = os.getenv("LLM_TYPE", "api")
+
+# API-based LLM (default: Qwen3 via DashScope)
 LLM_API_KEY = os.getenv("API_KEY", "")
-LLM_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-LLM_MODEL = "qwen3-max-2026-01-23"
-LLM_TEMPERATURE = 0.1
-LLM_ENABLE_THINKING = True
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+LLM_MODEL = os.getenv("LLM_MODEL", "qwen3-max-2026-01-23")
+LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.1"))
+LLM_ENABLE_THINKING = os.getenv("LLM_ENABLE_THINKING", "true").lower() == "true"
+
+# Local LLM Configuration (for GPU inference)
+LLM_MODEL_ID = os.getenv("LLM_MODEL_ID", "Qwen/Qwen2.5-Coder-32B-Instruct")
+LLM_QUANTIZATION = os.getenv("LLM_QUANTIZATION", "none")  # "none", "4bit", "8bit"
+LLM_DEVICE = os.getenv("LLM_DEVICE", "cuda")
+LLM_MAX_NEW_TOKENS = int(os.getenv("LLM_MAX_NEW_TOKENS", "4096"))
+LLM_GPU_MEMORY_UTILIZATION = float(os.getenv("LLM_GPU_MEMORY_UTILIZATION", "0.9"))
 
 # Execution limits
 EXECUTION_TIMEOUT_SEC = 30
