@@ -1,0 +1,13 @@
+{
+  "id": "cp_20260204_204415_submit_tool",
+  "action": "submit_tool",
+  "context": {
+    "tool_name": "calc_rsi",
+    "category": "calculation",
+    "contract_id": null
+  },
+  "created_at": "2026-02-04T20:44:15.196694",
+  "status": "failed",
+  "error": "register() got an unexpected keyword argument 'verification_stage'",
+  "failed_at": "2026-02-04T20:44:15.445643"
+}
