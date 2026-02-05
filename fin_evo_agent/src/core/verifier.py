@@ -7,6 +7,8 @@ Verification stages:
 4. INTEGRATION - Real data test (fetch tools only)
 
 Tools are only promoted if ALL stages pass.
+
+Constraints are loaded from the centralized constraints module.
 """
 
 import re
@@ -22,10 +24,7 @@ sys.path.insert(0, str(__file__).rsplit("/", 3)[0])
 from src.core.executor import ToolExecutor
 from src.core.registry import ToolRegistry
 from src.core.models import ExecutionTrace, VerificationStage
-from src.core.capabilities import (
-    ToolCapability, get_category_modules, get_banned_modules_for_category,
-    ALWAYS_BANNED_CALLS, ALWAYS_BANNED_ATTRIBUTES
-)
+from src.core.constraints import get_constraints
 from src.core.contracts import (
     ToolContract, OutputType, get_contract, infer_contract_from_query
 )
@@ -173,18 +172,21 @@ class MultiStageVerifier:
         task_id: str
     ) -> StageResult:
         """Stage 1: Verify code passes AST security check with capability rules."""
-        # Get allowed modules for this category
-        allowed_modules = get_category_modules(category)
+        # Get constraints from centralized config
+        constraints = get_constraints()
 
-        # Get additional banned modules for this category
-        banned_modules = get_banned_modules_for_category(category)
+        # Get allowed modules for this category from centralized config
+        allowed_modules = constraints.get_allowed_modules(category)
+
+        # Get banned modules for this category (always banned + category-specific)
+        banned_modules = constraints.get_banned_modules(category)
 
         is_safe, error = self.executor.static_check_with_rules(
             code,
             allowed_modules=allowed_modules,
             banned_modules=banned_modules,
-            banned_calls=ALWAYS_BANNED_CALLS,
-            banned_attributes=ALWAYS_BANNED_ATTRIBUTES
+            banned_calls=constraints.get_always_banned_calls(),
+            banned_attributes=constraints.get_always_banned_attributes()
         )
 
         if is_safe:

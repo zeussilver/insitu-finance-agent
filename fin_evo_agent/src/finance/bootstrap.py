@@ -11,6 +11,9 @@ Each tool is registered with:
 - Standalone code that uses DataProvider.reproducible for caching
 - Type hints and docstrings
 - Built-in test cases in if __name__ == '__main__' block
+
+Note: Bootstrap tools use inline caching for portability. For new code,
+prefer using the DataProvider adapter from src.data.adapters.
 """
 
 import sys

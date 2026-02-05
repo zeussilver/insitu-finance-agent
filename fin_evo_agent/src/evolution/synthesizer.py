@@ -2,11 +2,12 @@
 
 The core evolution loop:
 1. Call LLM to generate tool code from task description
-2. Multi-stage verification (AST, self-test, contract, integration)
-3. If passed all stages, register to database and disk
+2. Submit to VerificationGateway (enforces multi-stage verification)
+3. Gateway registers if all stages pass
 4. If failed, call Refiner for error repair
 
-Architecture Overhaul: Uses MultiStageVerifier for capability-based verification.
+Architecture: All tool registration MUST go through VerificationGateway.
+Direct registry.register() calls are prohibited.
 """
 
 import re
@@ -21,6 +22,8 @@ from src.core.models import ToolArtifact, ExecutionTrace, Permission, Verificati
 from src.core.verifier import MultiStageVerifier, VerificationReport
 from src.core.contracts import get_contract, infer_contract_from_query, ToolContract
 from src.core.capabilities import get_category_capabilities, ToolCapability
+from src.core.gateway import VerificationGateway, get_gateway
+from src.core.gates import EvolutionGatekeeper
 
 
 def extract_function_name(code: str) -> Optional[str]:
@@ -97,9 +100,10 @@ def extract_args_schema(code: str) -> dict:
 
 
 class Synthesizer:
-    """Tool synthesizer: Generate → Verify → Register
+    """Tool synthesizer: Generate → Gateway Submit → Refine
 
-    Uses MultiStageVerifier for capability-based, contract-validated verification.
+    All tool registration goes through VerificationGateway exclusively.
+    Direct registry.register() calls are prohibited.
     """
 
     def __init__(
@@ -107,12 +111,16 @@ class Synthesizer:
         llm: LLMAdapter = None,
         executor: ToolExecutor = None,
         registry: ToolRegistry = None,
-        verifier: MultiStageVerifier = None
+        verifier: MultiStageVerifier = None,
+        gateway: VerificationGateway = None,
+        gatekeeper: EvolutionGatekeeper = None,
     ):
         self.llm = llm or LLMAdapter()
         self.executor = executor or ToolExecutor()
         self.registry = registry or ToolRegistry()
         self.verifier = verifier or MultiStageVerifier(self.executor, self.registry)
+        self.gateway = gateway or get_gateway()
+        self.gatekeeper = gatekeeper or EvolutionGatekeeper()
 
     def synthesize(
         self,
@@ -126,8 +134,8 @@ class Synthesizer:
 
         Flow:
         1. Call LLM to generate code (with category-specific prompt)
-        2. Multi-stage verification (AST, self-test, contract, integration)
-        3. Register if all stages pass
+        2. Submit to VerificationGateway (verifies + registers atomically)
+        3. Gateway handles verification, checkpoint, and registration
 
         Args:
             task: Task description (e.g., "计算 RSI 指标")
@@ -174,7 +182,7 @@ class Synthesizer:
         if result["thought_trace"]:
             print(f"[Thinking] {result['thought_trace'][:100]}...")
 
-        # 2. Extract function name and schema
+        # 2. Extract function name for logging
         func_name = extract_function_name(code) or tool_name
         if not func_name:
             trace = ExecutionTrace(
@@ -189,55 +197,38 @@ class Synthesizer:
             )
             return None, trace
 
-        args_schema = extract_args_schema(code)
         print(f"[Synthesizer] Extracted function: {func_name}")
 
-        # 3. Multi-stage verification
-        print("[Synthesizer] Running multi-stage verification...")
-        passed, report = self.verifier.verify_all_stages(
+        # 3. Submit to VerificationGateway (handles verification + registration)
+        print("[Synthesizer] Submitting to VerificationGateway...")
+        success, tool, report = self.gateway.submit(
             code=code,
             category=category,
+            contract=contract,
+            task=task,
             task_id=task[:50],
-            contract=contract
+            force=False,  # Respect gatekeeper approval
         )
 
         # Create trace from verification report
         trace = self._create_trace_from_report(task, report)
 
-        if not passed:
-            print(f"[Synthesizer] Verification failed at stage: {report.final_stage.name}")
+        if not success:
+            print(f"[Synthesizer] Gateway rejected: {report.final_stage.name}")
             for stage in report.stages:
                 if stage.result.value == 'fail':
                     print(f"  - {stage.stage.name}: {stage.message}")
             return None, trace
 
-        print(f"[Synthesizer] Verification passed! Final stage: {report.final_stage.name}")
+        print(f"[Synthesizer] Gateway approved! Final stage: {report.final_stage.name}")
 
-        # 4. Register the tool
-        print("[Synthesizer] Registering tool...")
-
-        # Extract schema metadata
+        # Extract schema metadata for update
+        args_schema = extract_args_schema(code)
         indicator = extract_indicator(task, code)
         data_type = extract_data_type(task, args_schema)
 
         # Get capabilities for this category
         capabilities = [cap.value for cap in get_category_capabilities(category)]
-
-        # Determine permissions based on category
-        if category == 'fetch':
-            permissions = [Permission.NETWORK_READ.value, Permission.CALC_ONLY.value]
-        else:
-            permissions = [Permission.CALC_ONLY.value]
-
-        # Get input requirements from args_schema
-        input_requirements = list(args_schema.keys()) if args_schema else []
-
-        tool = self.registry.register(
-            name=func_name,
-            code=code,
-            args_schema=args_schema,
-            permissions=permissions
-        )
 
         # Update schema fields after registration
         if tool:
@@ -246,14 +237,7 @@ class Synthesizer:
                 category=category,
                 indicator=indicator,
                 data_type=data_type,
-                input_requirements=input_requirements
-            )
-            # Update capability and verification fields
-            self._update_tool_verification_fields(
-                tool.id,
-                capabilities=capabilities,
-                contract_id=contract.contract_id if contract else None,
-                verification_stage=report.final_stage.value
+                input_requirements=list(args_schema.keys()) if args_schema else []
             )
 
         print(f"[Synthesizer] Tool registered: {tool.name} v{tool.semantic_version} (ID: {tool.id})")
@@ -326,6 +310,8 @@ class Synthesizer:
         """
         Synthesize with retry on failure.
 
+        All registration goes through VerificationGateway.
+
         Args:
             task: Task description
             max_attempts: Maximum number of attempts
@@ -335,6 +321,8 @@ class Synthesizer:
         """
         traces = []
         error_context = None
+        category = self._infer_category(task)
+        contract = infer_contract_from_query(task, category)
 
         for attempt in range(max_attempts):
             print(f"\n[Synthesizer] Attempt {attempt + 1}/{max_attempts}")
@@ -354,19 +342,24 @@ class Synthesizer:
 
                 continue
 
-            # Try with error context
+            # Try with error context - submit through gateway
             if code:
                 func_name = extract_function_name(code)
                 if func_name:
-                    trace = self.executor.execute(code, "verify_only", {}, task[:50])
+                    # Use gateway for verification and registration
+                    success, tool, report = self.gateway.submit(
+                        code=code,
+                        category=category,
+                        contract=contract,
+                        task=task,
+                        task_id=task[:50],
+                        force=False,
+                    )
+
+                    trace = self._create_trace_from_report(task, report)
                     traces.append(trace)
 
-                    if trace.exit_code == 0:
-                        tool = self.registry.register(
-                            name=func_name,
-                            code=code,
-                            args_schema=extract_args_schema(code)
-                        )
+                    if success and tool:
                         return tool, traces
 
                     error_context = trace.std_err
@@ -384,6 +377,8 @@ class Synthesizer:
     ) -> Tuple[Optional[ToolArtifact], ExecutionTrace]:
         """
         Synthesize a tool with automatic refinement on failure.
+
+        All registration goes through VerificationGateway.
 
         Args:
             task: Task description
@@ -414,35 +409,35 @@ class Synthesizer:
         if not code:
             return None, trace
 
-        # Use refiner to fix the code
+        # Use refiner to fix the code (refiner now uses gateway)
         print("[Synthesizer] Synthesis failed, invoking Refiner...")
-        refiner = Refiner(self.llm, self.executor, self.registry)
+        refiner = Refiner(
+            llm=self.llm,
+            executor=self.executor,
+            registry=self.registry,
+            gateway=self.gateway,
+        )
+
+        if not category:
+            category = self._infer_category(task)
+
         refined_tool, error_reports = refiner.refine(
             code=code,
             task=task,
-            trace=trace
+            trace=trace,
+            category=category,
+            contract=contract,
         )
 
         if refined_tool:
             # Update schema fields for refined tool
-            if refined_tool:
-                if not category:
-                    category = self._infer_category(task)
-                self.registry.update_schema(
-                    refined_tool.id,
-                    category=category,
-                    indicator=extract_indicator(task, refined_tool.code_content),
-                    data_type=extract_data_type(task, extract_args_schema(refined_tool.code_content)),
-                    input_requirements=list(extract_args_schema(refined_tool.code_content).keys())
-                )
-                # Update verification fields
-                capabilities = [cap.value for cap in get_category_capabilities(category)]
-                self._update_tool_verification_fields(
-                    refined_tool.id,
-                    capabilities=capabilities,
-                    contract_id=contract.contract_id if contract else None,
-                    verification_stage=2  # Passed self-test via refiner
-                )
+            self.registry.update_schema(
+                refined_tool.id,
+                category=category,
+                indicator=extract_indicator(task, refined_tool.code_content),
+                data_type=extract_data_type(task, extract_args_schema(refined_tool.code_content)),
+                input_requirements=list(extract_args_schema(refined_tool.code_content).keys())
+            )
 
             # Create a success trace
             success_trace = ExecutionTrace(
