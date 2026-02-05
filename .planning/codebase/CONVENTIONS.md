@@ -1,275 +1,295 @@
 # Coding Conventions
 
-**Analysis Date:** 2026-02-03
+**Analysis Date:** 2026-02-05
 
 ## Naming Patterns
 
 **Files:**
-- Snake_case for modules: `llm_adapter.py`, `task_executor.py`, `data_proxy.py`
-- No file extensions except `.py`
-- Main entry point: `main.py`
-- Bootstrap code in `bootstrap.py`, generated code in `generated/`
+- Python modules: `snake_case.py` (e.g., `llm_adapter.py`, `task_executor.py`)
+- Test modules: `test_*.py` prefix (e.g., `test_executor.py`, `test_gateway.py`)
+- Config files: `lowercase.yaml` (e.g., `constraints.yaml`)
+- Main entry point: `main.py` at project root
+- Init files: `__init__.py` in every package (mostly empty for namespace declaration)
 
 **Functions:**
-- Snake_case: `get_stock_hist()`, `calc_rsi()`, `extract_function_name()`
-- Prefix conventions:
-  - `get_` for data fetching: `get_stock_hist()`, `get_financial_info()`
-  - `calc_` for calculations: `calc_rsi()`, `calc_ma()`, `calc_bollinger()`
-  - `check_` for boolean conditions: `check_trading_signal()`
-  - `extract_` for parsing: `extract_function_name()`, `extract_indicator()`
-  - `_validate_` for validation helpers: `_validate_numeric()`, `_validate_dict()`
-  - Private methods with single underscore: `_clean_protocol()`, `_infer_category()`
+- Snake case with descriptive verbs: `extract_function_name()`, `static_check_with_rules()`, `get_category_modules()`
+- Private functions: Leading underscore `_clean_protocol()`, `_mock_generate()`, `_log_security_violation()`
+- Module-level getters: `get_*` prefix (`get_gateway()`, `get_engine()`, `get_constraints()`)
+- Boolean checks: `is_*` prefix (`is_data_provider()`, `is_safe`)
+- Decorators: `with_*` or `@*` pattern (`with_retry()`, `@DataProvider.reproducible`)
 
 **Variables:**
-- Snake_case: `tool_name`, `func_name`, `exit_code`, `std_err`
-- Constants in UPPERCASE: `BANNED_MODULES`, `ALLOWED_MODULES`, `RETRY_MAX_ATTEMPTS`
-- Boolean flags with `is_`/`has_` prefix: `is_safe`, `has_error`
+- Snake case: `tool_name`, `exit_code`, `allowed_modules`, `std_err`
+- Constants: `UPPERCASE_SNAKE` (e.g., `ALLOWED_MODULES`, `EXECUTION_TIMEOUT_SEC`, `SYSTEM_PROMPT`)
+- Private attributes: Leading underscore `_constraints`, `_setup_logging()`
+- Paths: `*_DIR` or `*_PATH` suffix (`ROOT_DIR`, `DB_PATH`, `CACHE_DIR`)
 
 **Classes:**
-- PascalCase: `ToolExecutor`, `LLMAdapter`, `Synthesizer`, `MultiStageVerifier`
-- Descriptive noun phrases: `ToolArtifact`, `ExecutionTrace`, `ErrorReport`
-- Enums also use PascalCase: `ToolStatus`, `Permission`, `VerificationStage`
+- PascalCase: `ToolExecutor`, `LLMAdapter`, `VerificationGateway`, `MultiStageVerifier`
+- Exception classes: Suffix `Exception` (`SecurityException`, `VerificationError`)
+- Enum classes: PascalCase with UPPERCASE values
+  ```python
+  class ToolStatus(str, Enum):
+      PROVISIONAL = "provisional"
+      VERIFIED = "verified"
+  ```
 
 **Types:**
-- Enums inherit from `str, Enum` pattern for JSON serialization
-- Example: `class ToolStatus(str, Enum):`
-- TypeVar usage: `T = TypeVar('T')`
+- Type hints use standard library and typing module
+- SQLModel classes use PascalCase with `table=True`
+- Dataclasses use PascalCase with `@dataclass` decorator
 
 ## Code Style
 
 **Formatting:**
-- No automated formatter detected (no `.prettierrc`, `.black`, or `pyproject.toml`)
-- Manual style conventions observed:
-  - 4-space indentation
-  - Maximum line length ~100-120 characters (not enforced)
-  - Blank line between class methods
-  - Two blank lines between top-level definitions
-
-**Linting:**
-- No linter configuration files detected (no `.pylintrc`, `.flake8`, `pyproject.toml`)
-- Style enforced through code review
+- Tool: No explicit formatter configured (follows PEP 8 manually)
+- Indentation: 4 spaces (consistent throughout)
+- Line length: No strict limit, but most lines under 100 chars
+- String quotes: Double quotes `"` preferred, single quotes `'` for keys/internal strings
+- Trailing commas: Used in multi-line collections
 
 **Docstrings:**
-- Google-style docstrings used consistently
-- Triple-quoted strings with `"""`
-- Format:
+- Triple double-quotes `"""..."""`
+- Module-level docstrings at file top explaining purpose
+- Function docstrings with Args/Returns sections:
   ```python
-  def function_name(arg1: type, arg2: type) -> return_type:
-      """Brief description.
+  def calc_rsi(prices: list, period: int = 14) -> float:
+      """Calculate RSI indicator.
 
       Args:
-          arg1: Description
-          arg2: Description
+          prices: List of closing prices
+          period: RSI period (default 14)
 
       Returns:
-          Description of return value
+          RSI value between 0 and 100
       """
   ```
-- Module-level docstrings in all files
-- Class docstrings describe purpose and responsibilities
+- Class docstrings describe purpose and key methods
+
+**Linting:**
+- No explicit linter config file (`.eslintrc`, `.flake8`) detected
+- Code follows PEP 8 conventions manually
+- Type hints used extensively for function signatures
 
 ## Import Organization
 
 **Order:**
-1. Standard library imports (grouped)
-2. Third-party imports (pandas, numpy, yfinance, sqlmodel)
-3. Local imports with sys.path manipulation
-4. Example from `src/core/executor.py`:
-   ```python
-   import ast
-   import json
-   import subprocess
-   import sys
-   import tempfile
+1. Standard library imports
+2. Third-party imports (sqlmodel, pandas, openai)
+3. Local imports with path manipulation
+4. Blank line between groups
 
-   import sys as _sys
-   _sys.path.insert(0, str(__file__).rsplit("/", 3)[0])
-   from src.config import EXECUTION_TIMEOUT_SEC
-   from src.core.models import ExecutionTrace
-   ```
+**Pattern observed:**
+```python
+# Standard library
+import re
+import json
+from typing import Optional, List
+from pathlib import Path
+
+# Third-party
+import pandas as pd
+from openai import OpenAI
+from sqlmodel import SQLModel, Field
+
+# Local (with path setup)
+import sys
+sys.path.insert(0, str(__file__).rsplit("/", 3)[0])
+from src.core.models import ToolArtifact
+from src.config import DB_URL
+```
 
 **Path Aliases:**
-- No path aliases configured
-- Uses dynamic path insertion: `sys.path.insert(0, str(__file__).rsplit("/", 3)[0])`
-- All imports use absolute paths from project root: `from src.config import ...`
+- No path aliases (tsconfig paths) used
+- Absolute imports from `src.*` after path manipulation
+- Path setup: `sys.path.insert(0, str(__file__).rsplit("/", 3)[0])` or `sys.path.insert(0, str(Path(__file__).parent.parent.parent))`
 
 **Import Style:**
-- Explicit imports preferred: `from src.core.models import ToolArtifact, ExecutionTrace`
-- Module imports when many symbols: `import pandas as pd`, `import numpy as np`
-- Avoid wildcard imports (no `from module import *` observed)
+- Explicit imports: `from src.core.executor import ToolExecutor, SecurityException`
+- Avoid wildcard imports `from module import *`
+- Relative imports not used - always absolute after path setup
 
 ## Error Handling
 
 **Patterns:**
-- Try-except blocks with specific exception types
-- Return values over exceptions for expected failures:
-  - `None` for data not found
-  - Empty DataFrame for failed queries
-  - Tuple of `(is_safe, error_message)` for validation
-- Custom exceptions for security: `class SecurityException(Exception):`
-- Execution results use structured traces rather than raising exceptions
+- Try-except with specific error handling:
+  ```python
+  try:
+      completion = self.client.chat.completions.create(...)
+      raw_response = completion.choices[0].message.content
+  except Exception as e:
+      print(f"[LLM Error] {e}")
+      return {"code_payload": None, "error": str(e)}
+  ```
+- Return sentinel values rather than raising exceptions:
+  - `None` for missing data
+  - `0.0` for failed numeric operations
+  - Empty string `""` for failed string operations
+  - Exit codes: `0` = success, `1` = error, `124` = timeout
 
-**Example pattern from `src/core/executor.py`:**
-```python
-def static_check(self, code: str) -> Tuple[bool, Optional[str]]:
-    """Returns (is_safe, error_message) instead of raising"""
-    try:
-        tree = ast.parse(code)
-    except SyntaxError as e:
-        return False, f"Syntax Error: {e}"
-    # ... validation logic ...
-    return True, None
-```
+**Custom Exceptions:**
+- `SecurityException` for AST security violations
+- `VerificationError` for gateway failures
+- Raised explicitly: `raise SecurityException("Banned import: os")`
 
-**Example from `src/finance/data_proxy.py`:**
-```python
-try:
-    ticker = yf.Ticker(symbol)
-    df = ticker.history(start=start, end=end)
-    if df.empty:
-        return None  # Expected failure returns None
-    return df
-except Exception:
-    return None  # Network errors also return None
-```
+**Validation:**
+- Early returns for invalid input:
+  ```python
+  if len(prices) < period + 1:
+      return 50.0  # Return neutral value
+  ```
+- Assertion in tests: `assert result > 0, "AAPL should have positive market cap"`
 
 ## Logging
 
-**Framework:** `print()` statements (no logging framework)
+**Framework:** Print statements (no structured logging framework detected)
 
 **Patterns:**
-- Structured prefixes: `[Step 1]`, `[Synthesizer]`, `[Retry]`, `[SECURITY]`
-- Progress indicators: `print(f"[Synthesizer] Generating code for: {task}")`
-- Error logging to stderr: `print(f"[SECURITY] {violation}", file=sys.stderr)`
-- File-based security logs: `data/logs/security_violations.log`
-- Thinking process logs: `data/logs/thinking_process/`
+- Prefixed log messages: `[Component] Message`
+- Examples:
+  - `print(f"[Synthesizer] Generating code for: {task}")`
+  - `print(f"[SECURITY] {violation}", file=sys.stderr)`
+  - `print("[Step 1] Preparing context data...")`
+- File logging for security violations: `data/logs/security_violations.log`
+- Structured JSONL for gateway attempts: `data/logs/gateway_attempts.jsonl`
 
-**Security Violation Logging Pattern:**
-```python
-def _log_security_violation(self, violation: str, task_id: str = "unknown"):
-    # Log to stderr
-    print(f"[SECURITY] {violation}", file=sys.stderr)
-    # Log to file
-    log_path = logs_dir / "security_violations.log"
-    with open(log_path, 'a', encoding='utf-8') as f:
-        f.write(f"{datetime.now().isoformat()} | {task_id} | {violation}\n")
-```
+**Log Levels:**
+- Info: `[Component] Action`
+- Error: `print(..., file=sys.stderr)`
+- Security: `[SECURITY] Violation details`
+
+**When to Log:**
+- Component entry/exit points
+- Key state transitions (synthesis, verification, registration)
+- Errors and security violations
+- Test pass/fail results
 
 ## Comments
 
 **When to Comment:**
-- Complex algorithms: RSI calculation logic
-- Security-critical sections: AST validation rules
-- Non-obvious design decisions: "Metadata in DB, Payload on Disk"
-- TODO markers: Not observed in current codebase
-
-**JSDoc/Pydoc:**
-- Comprehensive function docstrings (Google style)
-- Type hints provide inline documentation
-- Module-level docstrings explain architecture
-- Example from `src/evolution/synthesizer.py`:
+- Critical security constraints with visual separators:
   ```python
-  """Tool Synthesizer: Generate → Verify → Register → Refine
-
-  The core evolution loop:
-  1. Call LLM to generate tool code from task description
-  2. Multi-stage verification (AST, self-test, contract, integration)
-  3. If passed all stages, register to database and disk
-  4. If failed, call Refiner for error repair
-  """
+  # ═══════════════════════════════════════════
+  # CRITICAL CONSTRAINT - READ CAREFULLY
+  # ═══════════════════════════════════════════
   ```
+- Complex algorithms explaining logic:
+  ```python
+  # Calculate RSI: RS = avg_gain / avg_loss
+  # RSI = 100 - 100 / (1 + RS)
+  ```
+- TODO/FIXME markers (avoided in this codebase - implementation complete)
+- Section dividers in long files:
+  ```python
+  # --- Table 1: ToolArtifact ---
+  # --- Multi-Stage Verification ---
+  ```
+
+**Comment Style:**
+- Full sentences with proper capitalization
+- Inline comments: `#` followed by space
+- Block comments above code, not at end of line
+- No commented-out code (clean implementation)
+
+**JSDoc/TSDoc:**
+- Python equivalent: Docstrings (not JSDoc)
+- Used for all public functions, classes, and modules
+- Args, Returns, Raises sections where applicable
 
 ## Function Design
 
 **Size:**
-- Functions typically 20-50 lines
-- Helper methods extracted for readability
-- Example: `_validate_numeric()`, `_validate_dict()` separated from `_validate_output()`
+- Small focused functions: 10-50 lines typical
+- Large system functions: 100-200 lines for complex logic (e.g., `synthesize()`, `execute()`)
+- Self-tests moved out of `__main__` blocks into separate test files
 
 **Parameters:**
-- Type hints required: `def calc_rsi(prices: list, period: int = 14) -> float:`
-- Default values for optional params: `period: int = 14`
-- Keyword arguments preferred for clarity
-- Dict/JSON for complex inputs: `args: dict`, `config: Dict[str, Any]`
+- Type hints required: `prices: list`, `period: int = 14`, `-> float`
+- Default values for optional params: `def calc_rsi(prices: list, period: int = 14)`
+- Dictionary for complex args: `args: dict`, `config: Dict`
+- Named parameters preferred over positional
 
 **Return Values:**
-- Explicit type hints: `-> float`, `-> Tuple[bool, Optional[str]]`, `-> ExecutionTrace`
-- Tuples for multiple values: `(is_safe, error_message)`
-- None for failure cases rather than exceptions
-- Structured objects for complex returns: `ExecutionTrace`, `VerificationReport`
+- Explicit type hints: `-> Optional[str]`, `-> Tuple[bool, Optional[str]]`
+- Tuple unpacking for multiple returns: `success, tool, report = gateway.submit(...)`
+- None for failure cases: `return None, trace`
+- Typed returns match function signature
+
+**Patterns:**
+- Validation at function start with early returns
+- Single responsibility per function
+- Pure functions for calculations (no side effects)
+- Builder pattern for complex objects (`Synthesizer`, `Verifier`)
 
 ## Module Design
 
 **Exports:**
+- All public classes/functions defined in module
 - No explicit `__all__` declarations
-- Public API through classes and top-level functions
-- Private helpers prefixed with underscore
+- Module-level functions and classes directly importable
+
+**Structure:**
+- Module docstring at top
+- Imports
+- Constants/Enums
+- Classes
+- Functions
+- `if __name__ == "__main__":` block (often just a message pointing to tests)
 
 **Barrel Files:**
-- Not used
-- Each module imported directly: `from src.core.executor import ToolExecutor`
+- `__init__.py` files are mostly empty (used for namespace only)
+- No re-exports or index files
+- Direct imports: `from src.core.executor import ToolExecutor`
 
-**Module Structure Pattern:**
-```python
-# Docstring
-"""Module purpose and architecture notes."""
+**Organization:**
+- One primary class per file: `executor.py` contains `ToolExecutor`
+- Related functions grouped in same module: `schema.py` has `extract_symbols()`, `extract_dates()`, etc.
+- Utility modules: `constraints.py` for centralized config loading
 
-# Imports (standard, third-party, local)
-import sys
-from typing import ...
+## Architecture Patterns
 
-# Constants
-CONSTANT_NAME = value
-
-# Classes
-class ClassName:
-    pass
-
-# Functions
-def helper_function():
-    pass
-
-# Main execution
-if __name__ == "__main__":
-    # Test code or CLI entry point
-```
-
-## Type Annotations
-
-**Usage:**
-- Comprehensive type hints throughout codebase
-- Function signatures: `def func(arg: type) -> return_type:`
-- Complex types from `typing`: `Optional`, `Tuple`, `Dict`, `List`, `Set`
-- Forward references avoided by proper import order
-- SQLModel fields use `Field()` with metadata:
+**Dependency Injection:**
+- Components accept dependencies in `__init__`:
   ```python
-  name: str = Field(index=True)
-  content_hash: str = Field(index=True, unique=True)
+  def __init__(self, llm=None, executor=None, registry=None):
+      self.llm = llm or LLMAdapter()
+      self.executor = executor or ToolExecutor()
   ```
+
+**Singleton Pattern:**
+- Global gateway instance: `get_gateway()` returns singleton
+- Database engine: `get_engine()` creates on demand
+
+**Protocol Pattern:**
+- `DataProvider` protocol for pluggable adapters
+- Type checking: `is_data_provider(obj)` validates protocol compliance
+
+**Decorator Pattern:**
+- `@with_retry` for network resilience
+- `@DataProvider.reproducible` for caching
+- Custom decorators with retry logic and exponential backoff
+
+**Enum Pattern:**
+- String enums for status values: `class ToolStatus(str, Enum)`
+- Integer enums for stages: `class VerificationStage(int, Enum)`
 
 ## Security Conventions
 
-**Critical Rules:**
-- Always use AST validation before executing generated code
-- Never use `eval()`, `exec()`, `__import__()` in generated tools
-- Subprocess sandboxing for all code execution
-- Banned modules/calls/attributes defined in constants
-- Capability-based permissions per tool category
+**AST Analysis:**
+- All code passes through `static_check()` before execution
+- Capability-based rules loaded from `configs/constraints.yaml`
+- Banned modules/calls/attributes enforced at parse time
 
-**Pattern from `src/core/executor.py`:**
-```python
-BANNED_MODULES = {
-    'os', 'sys', 'subprocess', 'shutil', 'builtins',
-    'importlib', 'ctypes', 'socket', 'http', 'urllib',
-    # ... more
-}
+**Subprocess Isolation:**
+- All tool execution in subprocess with timeout
+- JSON IPC for parameter passing (avoids eval)
+- Temp directories for sandboxing
 
-BANNED_CALLS = {
-    'eval', 'exec', 'compile', '__import__',
-    # ... more
-}
-```
+**No Dynamic Execution:**
+- Never use `eval()` or `exec()` in production code
+- Runner script uses `eval()` only in isolated subprocess
+- All parameters validated before passing to subprocess
 
 ---
 
-*Convention analysis: 2026-02-03*
+*Convention analysis: 2026-02-05*

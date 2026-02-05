@@ -1,0 +1,167 @@
+# Baseline Update Workflow
+# ========================
+#
+# Triggered on PR merge to main:
+# 1. Extracts benchmark results from the merged PR
+# 2. Creates baseline snapshot in benchmarks/baselines/
+# 3. Updates config_matrix.yaml with new baseline reference if improved
+#
+# This enables continuous baseline tracking as the project evolves.
+
+name: Update Baseline
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'fin_evo_agent/**'
+      - 'openspec/**'
+
+jobs:
+  update-baseline:
+    runs-on: ubuntu-latest
+    # Only run if the push was a PR merge (has associated PR)
+    if: github.event.head_commit.message != '' && contains(github.event.head_commit.message, 'Merge pull request')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history for git operations
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: fin_evo_agent/requirements.txt
+
+      - name: Install dependencies
+        working-directory: fin_evo_agent
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Restore yfinance cache
+        uses: actions/cache@v4
+        with:
+          path: fin_evo_agent/data/cache
+          key: yfinance-cache-${{ hashFiles('fin_evo_agent/benchmarks/tasks.jsonl') }}
+          restore-keys: |
+            yfinance-cache-
+
+      - name: Initialize database
+        working-directory: fin_evo_agent
+        run: python main.py --init
+
+      - name: Run benchmark for baseline
+        working-directory: fin_evo_agent
+        env:
+          API_KEY: ${{ secrets.API_KEY }}
+        run: |
+          python benchmarks/run_eval.py \
+            --agent evolving \
+            --config cold_start \
+            --run-id baseline-${{ github.sha }}
+
+      - name: Create baseline snapshot
+        working-directory: fin_evo_agent
+        run: |
+          python -c "
+          import json
+          import os
+          from datetime import datetime
+
+          # Read benchmark results
+          results_file = 'benchmarks/results/baseline-${{ github.sha }}.json'
+          with open(results_file) as f:
+              results = json.load(f)
+
+          summary = results.get('summary', {})
+
+          # Create baseline snapshot
+          baseline = {
+              'date': datetime.now().isoformat()[:10],
+              'commit': '${{ github.sha }}'[:8],
+              'pass_rate': summary.get('pass_rate', 0),
+              'passed': summary.get('passed', 0),
+              'total_tasks': summary.get('total_tasks', 0),
+              'by_category': {},
+              'pr_number': None  # Will be populated if this was a PR merge
+          }
+
+          # Extract category breakdown
+          for category in ['fetch', 'calculation', 'composite']:
+              cat_data = summary.get('by_category', {}).get(category, {})
+              if cat_data:
+                  baseline['by_category'][category] = {
+                      'passed': cat_data.get('passed', 0),
+                      'total': cat_data.get('total', 0),
+                      'rate': cat_data.get('rate', 0)
+                  }
+
+          # Ensure baselines directory exists
+          os.makedirs('benchmarks/baselines', exist_ok=True)
+
+          # Save dated baseline
+          date_str = datetime.now().strftime('%Y-%m-%d')
+          baseline_file = f'benchmarks/baselines/{date_str}.json'
+          with open(baseline_file, 'w') as f:
+              json.dump(baseline, f, indent=2)
+
+          print(f'Created baseline: {baseline_file}')
+          print(f'Pass rate: {baseline[\"pass_rate\"]:.1%} ({baseline[\"passed\"]}/{baseline[\"total_tasks\"]})')
+
+          # Output for next step
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f'baseline_file={baseline_file}\n')
+              f.write(f'pass_rate={baseline[\"pass_rate\"]}\n')
+              f.write(f'passed={baseline[\"passed\"]}\n')
+              f.write(f'total={baseline[\"total_tasks\"]}\n')
+          "
+
+      - name: Check if baseline improved
+        id: check_improvement
+        working-directory: fin_evo_agent
+        run: |
+          python -c "
+          import yaml
+          import os
+
+          # Read current config
+          with open('benchmarks/config_matrix.yaml') as f:
+              config = yaml.safe_load(f)
+
+          current_baseline = config.get('baseline', {})
+          current_rate = current_baseline.get('pass_rate', 0)
+          new_rate = float('${{ steps.create_baseline.outputs.pass_rate }}' or 0)
+
+          improved = new_rate > current_rate
+          print(f'Current baseline: {current_rate:.1%}')
+          print(f'New rate: {new_rate:.1%}')
+          print(f'Improved: {improved}')
+
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f'improved={str(improved).lower()}\n')
+          "
+
+      - name: Commit baseline snapshot
+        if: success()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add fin_evo_agent/benchmarks/baselines/
+
+          if git diff --staged --quiet; then
+            echo "No baseline changes to commit"
+          else
+            git commit -m "chore: update baseline snapshot
+
+          Pass rate: ${{ steps.create_baseline.outputs.passed }}/${{ steps.create_baseline.outputs.total }}
+          Commit: ${{ github.sha }}
+
+          Co-Authored-By: github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
+
+            git push
+          fi

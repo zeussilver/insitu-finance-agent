@@ -4,10 +4,14 @@ Each tool category has specific capabilities that determine:
 - Which modules it can import
 - What operations it can perform
 - How it should be verified
+
+This module now delegates to the centralized constraints module for actual
+constraint values, while maintaining the same API for backwards compatibility.
 """
 
 from enum import Enum
 from typing import Set, Dict, List
+from src.core.constraints import get_constraints
 
 
 class ToolCapability(str, Enum):
@@ -26,52 +30,21 @@ class ToolCategory(str, Enum):
     COMPOSITE = "composite"   # Can combine multiple tools
 
 
-# Modules allowed for each capability
-CAPABILITY_MODULES: Dict[ToolCapability, Set[str]] = {
-    ToolCapability.CALCULATE: {
-        'pandas', 'numpy', 'datetime', 'json', 'math',
-        'decimal', 'collections', 're', 'typing'
-    },
-    ToolCapability.FETCH: {
-        'pandas', 'numpy', 'datetime', 'json',
-        'yfinance', 'hashlib', 'typing', 'warnings'
-    },
-    ToolCapability.CACHE_WRITE: {
-        'pathlib'
-    },
-    ToolCapability.NETWORK_READ: {
-        'yfinance'
-    },
-    ToolCapability.FILE_READ: {
-        'pathlib', 'json'
-    },
-}
-
-
-# Capabilities granted to each tool category
+# Capabilities granted to each tool category (kept for semantic meaning)
 CATEGORY_CAPABILITIES: Dict[ToolCategory, Set[ToolCapability]] = {
     ToolCategory.FETCH: {
         ToolCapability.FETCH,
         ToolCapability.NETWORK_READ,
         ToolCapability.CACHE_WRITE,
-        ToolCapability.CALCULATE,  # Can also do basic calculations
+        ToolCapability.CALCULATE,
     },
     ToolCategory.CALCULATE: {
         ToolCapability.CALCULATE,
     },
     ToolCategory.COMPOSITE: {
         ToolCapability.CALCULATE,
-        # Optionally can have FETCH capability if needed
     },
 }
-
-
-def get_allowed_modules(capabilities: Set[ToolCapability]) -> Set[str]:
-    """Get all allowed modules for a set of capabilities."""
-    modules = set()
-    for cap in capabilities:
-        modules.update(CAPABILITY_MODULES.get(cap, set()))
-    return modules
 
 
 def get_category_modules(category) -> Set[str]:
@@ -79,15 +52,14 @@ def get_category_modules(category) -> Set[str]:
 
     Args:
         category: Can be ToolCategory enum or string ('fetch', 'calculation', 'composite')
+
+    Delegates to centralized constraints for actual module lists.
     """
-    if isinstance(category, str):
-        try:
-            category = ToolCategory(category)
-        except ValueError:
-            # Default to calculation for unknown categories
-            category = ToolCategory.CALCULATE
-    capabilities = CATEGORY_CAPABILITIES.get(category, set())
-    return get_allowed_modules(capabilities)
+    if isinstance(category, ToolCategory):
+        category = category.value
+
+    constraints = get_constraints()
+    return constraints.get_allowed_modules(category)
 
 
 def get_category_capabilities(category: str) -> Set[ToolCapability]:
@@ -96,65 +68,57 @@ def get_category_capabilities(category: str) -> Set[ToolCapability]:
         cat = ToolCategory(category)
         return CATEGORY_CAPABILITIES.get(cat, set())
     except ValueError:
-        # Default to CALCULATE if unknown category
         return CATEGORY_CAPABILITIES[ToolCategory.CALCULATE]
 
 
-# Modules that are ALWAYS banned regardless of capability
-ALWAYS_BANNED_MODULES: Set[str] = {
-    'os', 'sys', 'subprocess', 'shutil', 'builtins',
-    'importlib', 'ctypes', 'socket', 'http', 'urllib',
-    'pickle', 'shelve', 'multiprocessing', 'threading',
-    'pty', 'tty', 'fcntl', 'posix', 'nt', 'msvcrt',
-    'code', 'codeop', 'commands', 'popen2', 'signal'
-}
-
-
-# Calls that are ALWAYS banned regardless of capability
-ALWAYS_BANNED_CALLS: Set[str] = {
-    'eval', 'exec', 'compile', '__import__',
-    'globals', 'locals', 'vars', 'dir',
-    'getattr', 'setattr', 'delattr',
-    'hasattr', 'open', 'file', 'input', 'raw_input',
-    'execfile', 'reload', 'breakpoint'
-}
-
-
-# Attributes that are ALWAYS banned
-ALWAYS_BANNED_ATTRIBUTES: Set[str] = {
-    '__class__', '__bases__', '__subclasses__', '__mro__',
-    '__dict__', '__globals__', '__code__', '__builtins__',
-    '__getattribute__', '__setattr__', '__delattr__',
-    '__reduce__', '__reduce_ex__', '__getstate__', '__setstate__',
-    '__init_subclass__', '__class_getitem__',
-    'func_globals', 'func_code',
-}
-
-
-# Additional banned modules for CALCULATE-only tools
-CALC_BANNED_MODULES: Set[str] = {
-    'yfinance', 'akshare', 'talib', 'requests',
-    'urllib3', 'httpx', 'aiohttp'
-}
-
-
 def get_banned_modules_for_category(category: str) -> Set[str]:
-    """Get banned modules for a specific category."""
-    banned = ALWAYS_BANNED_MODULES.copy()
+    """Get banned modules for a specific category.
 
-    if category == 'calculation':
-        # CALCULATE tools cannot use network/fetch modules
-        banned.update(CALC_BANNED_MODULES)
+    Delegates to centralized constraints.
+    """
+    constraints = get_constraints()
+    return constraints.get_banned_modules(category)
 
-    return banned
+
+# Properties that delegate to centralized constraints for backwards compatibility
+@property
+def ALWAYS_BANNED_MODULES() -> Set[str]:
+    """Get always banned modules from centralized config."""
+    return get_constraints().always_banned_modules
+
+
+@property
+def ALWAYS_BANNED_CALLS() -> Set[str]:
+    """Get always banned calls from centralized config."""
+    return get_constraints().always_banned_calls
+
+
+@property
+def ALWAYS_BANNED_ATTRIBUTES() -> Set[str]:
+    """Get always banned attributes from centralized config."""
+    return get_constraints().always_banned_attributes
+
+
+# Module-level accessors for backwards compatibility
+def _get_always_banned_modules() -> Set[str]:
+    return get_constraints().always_banned_modules
+
+def _get_always_banned_calls() -> Set[str]:
+    return get_constraints().always_banned_calls
+
+def _get_always_banned_attributes() -> Set[str]:
+    return get_constraints().always_banned_attributes
+
+# For backwards compatibility, also expose as module-level constants
+# These delegate to centralized config on access
+ALWAYS_BANNED_MODULES = _get_always_banned_modules()
+ALWAYS_BANNED_CALLS = _get_always_banned_calls()
+ALWAYS_BANNED_ATTRIBUTES = _get_always_banned_attributes()
 
 
 if __name__ == "__main__":
-    # Test module mappings
-    print("=== Capability Module Mappings ===")
-    for cap in ToolCapability:
-        modules = CAPABILITY_MODULES.get(cap, set())
-        print(f"{cap.value}: {sorted(modules)}")
+    # Test module mappings - now delegating to centralized constraints
+    print("=== Capability System (Centralized Constraints) ===")
 
     print("\n=== Category Allowed Modules ===")
     for cat in ToolCategory:
@@ -165,5 +129,11 @@ if __name__ == "__main__":
     for cat in ['fetch', 'calculation', 'composite']:
         banned = get_banned_modules_for_category(cat)
         print(f"{cat}: {len(banned)} banned modules")
+
+    print("\n=== Always Banned (from constraints.yaml) ===")
+    constraints = get_constraints()
+    print(f"Modules: {len(constraints.always_banned_modules)}")
+    print(f"Calls: {len(constraints.always_banned_calls)}")
+    print(f"Attributes: {len(constraints.always_banned_attributes)}")
 
     print("\nCapability system tests passed!")

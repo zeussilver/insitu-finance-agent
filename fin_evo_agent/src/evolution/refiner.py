@@ -1,11 +1,14 @@
-"""Tool Refiner: Error Analysis → Patch Generation → Verification
+"""Tool Refiner: Error Analysis → Patch Generation → Gateway Submit
 
 The repair loop:
 1. Analyze error from ExecutionTrace
 2. Generate ErrorReport with LLM analysis
 3. Generate patched code based on error context
-4. Verify patch in sandbox
-5. If passed, create ToolPatch record and register new version
+4. Submit to VerificationGateway (verifies + registers atomically)
+5. If passed, create ToolPatch record
+
+Architecture: All tool registration MUST go through VerificationGateway.
+Direct registry.register() calls are prohibited.
 """
 
 import re
@@ -25,6 +28,9 @@ from src.core.models import (
     ToolArtifact, ExecutionTrace, ErrorReport, ToolPatch,
     init_db, get_engine
 )
+from src.core.gateway import VerificationGateway, get_gateway
+from src.core.gates import EvolutionGatekeeper
+from src.core.contracts import ToolContract
 from src.evolution.synthesizer import extract_function_name, extract_args_schema
 
 
@@ -73,7 +79,11 @@ UNFIXABLE_ERRORS = {
 
 
 class Refiner:
-    """Tool refiner: Error Analysis → Patch → Register"""
+    """Tool refiner: Error Analysis → Patch → Gateway Submit
+
+    All tool registration goes through VerificationGateway exclusively.
+    Direct registry.register() calls are prohibited.
+    """
 
     # Common error patterns and fix strategies
     ERROR_PATTERNS = {
@@ -119,11 +129,15 @@ class Refiner:
         self,
         llm: LLMAdapter = None,
         executor: ToolExecutor = None,
-        registry: ToolRegistry = None
+        registry: ToolRegistry = None,
+        gateway: VerificationGateway = None,
+        gatekeeper: EvolutionGatekeeper = None,
     ):
         self.llm = llm or LLMAdapter()
         self.executor = executor or ToolExecutor()
         self.registry = registry or ToolRegistry()
+        self.gateway = gateway or get_gateway()
+        self.gatekeeper = gatekeeper or EvolutionGatekeeper()
         self.engine = get_engine()
 
     def _classify_error(self, stderr: str) -> Tuple[str, str]:
@@ -209,7 +223,9 @@ class Refiner:
         original_code: str,
         task: str,
         attempt: int = 1,
-        previous_patches: Optional[List[dict]] = None
+        previous_patches: Optional[List[dict]] = None,
+        contract: Optional[ToolContract] = None,
+        category: Optional[str] = None
     ) -> Optional[str]:
         """
         Generate patched code based on error analysis.
@@ -220,6 +236,8 @@ class Refiner:
             task: Original task description
             attempt: Current attempt number (1-3)
             previous_patches: List of previous patch attempts with failure reasons
+            contract: Optional contract for output type guidance (P0-2)
+            category: Tool category for module guidance (P0-4)
 
         Returns:
             Patched code or None if generation failed
@@ -238,11 +256,43 @@ class Refiner:
         if error_report.error_type in ("ModuleNotFoundError", "ImportError"):
             module_guidance = MODULE_REPLACEMENT_GUIDE
 
+        # P0-2: Contract guidance section
+        contract_guidance = ""
+        if contract:
+            output_type = contract.output_type.value if hasattr(contract.output_type, 'value') else str(contract.output_type)
+            contract_guidance = f"\n## 输出要求 (OUTPUT REQUIREMENT)\n必须返回: {output_type}\n"
+            if output_type == "numeric":
+                contract_guidance += "返回单个 float 值，不要返回 dict/DataFrame/list\n"
+            elif output_type == "dict":
+                keys = getattr(contract, 'required_keys', None) or []
+                if keys:
+                    contract_guidance += f"返回包含这些键的 dict: {keys}\n"
+                else:
+                    contract_guidance += "返回一个 dict\n"
+            elif output_type == "boolean":
+                contract_guidance += "返回 True 或 False，不要返回 0/1 或字符串\n"
+            elif output_type == "dataframe":
+                keys = getattr(contract, 'required_keys', None) or []
+                if keys:
+                    contract_guidance += f"返回包含这些列的 DataFrame: {keys}\n"
+                else:
+                    contract_guidance += "返回一个 DataFrame\n"
+
+        # P0-4: Category-aware module guidance
+        if category == "fetch":
+            category_module_guidance = "可用模块: pandas, numpy, yfinance, datetime, json, warnings, hashlib, typing"
+        elif category == "calculation":
+            category_module_guidance = "可用模块: pandas, numpy, datetime, json, math, decimal, collections, re, typing (不要用 yfinance)"
+        elif category == "composite":
+            category_module_guidance = "可用模块: pandas, numpy, datetime, json, math, decimal, collections, re, typing (不要用 yfinance)"
+        else:
+            category_module_guidance = "只使用 pandas 和 numpy 进行计算 (不要使用 talib 或其他外部库)"
+
         patch_prompt = f"""修复以下Python代码中的错误。
 
 ## 原始任务
 {task}
-
+{contract_guidance}
 ## 原始代码
 ```python
 {original_code}
@@ -257,7 +307,7 @@ class Refiner:
 ## 修复要求
 1. 首先简要说明你将要修改什么以及为什么
 2. 修复错误，保持原有功能
-3. 只使用 pandas 和 numpy 进行计算 (不要使用 talib 或其他外部库)
+3. {category_module_guidance}
 4. 保留原有的类型注解和文档字符串
 5. 保留 if __name__ == '__main__' 中的测试用例
 6. 重要：不要修改测试断言 - 测试定义了期望行为，修复应使代码通过原始测试
@@ -273,10 +323,14 @@ class Refiner:
         task: str,
         trace: ExecutionTrace,
         base_tool: Optional[ToolArtifact] = None,
-        max_attempts: int = 3
+        max_attempts: int = 3,
+        category: Optional[str] = None,
+        contract: Optional[ToolContract] = None,
     ) -> Tuple[Optional[ToolArtifact], List[ErrorReport]]:
         """
         Full refinement loop with retry, backoff, and history tracking.
+
+        All registration goes through VerificationGateway.
 
         Args:
             code: Failed code to refine
@@ -284,11 +338,17 @@ class Refiner:
             trace: Failed execution trace
             base_tool: Optional base tool (for versioning)
             max_attempts: Maximum refinement attempts
+            category: Tool category for verification
+            contract: Optional contract for validation
 
         Returns:
             (refined_tool, error_reports) - tool is None if all attempts failed
         """
         print(f"[Refiner] Starting refinement (max {max_attempts} attempts)")
+
+        # Infer category if not provided
+        if not category:
+            category = self._infer_category(task)
 
         error_reports = []
         patch_history = []
@@ -318,14 +378,16 @@ class Refiner:
             print(f"  > Error type: {error_report.error_type}")
             print(f"  > Root cause: {error_report.root_cause[:100]}...")
 
-            # 2. Generate patch with history
+            # 2. Generate patch with history, contract, and category (P0-2, P0-4)
             print("[Refiner] Generating patch...")
             patched_code = self.generate_patch(
                 error_report,
                 current_code,
                 task,
                 attempt=attempt + 1,
-                previous_patches=patch_history if patch_history else None
+                previous_patches=patch_history if patch_history else None,
+                contract=contract,
+                category=category
             )
 
             if not patched_code:
@@ -336,30 +398,29 @@ class Refiner:
                 })
                 continue
 
-            # 3. Verify patch
-            print("[Refiner] Verifying patch...")
-            verify_trace = self.executor.execute(
-                patched_code, "verify_only", {}, f"refine_{attempt}"
+            # 3. Extract function name for logging
+            func_name = extract_function_name(patched_code)
+            if not func_name:
+                print("  > Could not extract function name")
+                patch_history.append({
+                    "approach": "Patch generated but function name extraction failed",
+                    "failure_reason": "No function definition found in patched code"
+                })
+                continue
+
+            # 4. Submit to VerificationGateway (handles verification + registration)
+            print("[Refiner] Submitting to VerificationGateway...")
+            success, tool, report = self.gateway.submit(
+                code=patched_code,
+                category=category,
+                contract=contract,
+                task=task,
+                task_id=f"refine_{attempt}",
+                force=False,
             )
 
-            if verify_trace.exit_code == 0:
-                print("[Refiner] Patch verified successfully!")
-
-                # 4. Register patched tool
-                func_name = extract_function_name(patched_code)
-                if not func_name:
-                    print("  > Could not extract function name")
-                    patch_history.append({
-                        "approach": "Patch generated but function name extraction failed",
-                        "failure_reason": "No function definition found in patched code"
-                    })
-                    continue
-
-                tool = self.registry.register(
-                    name=func_name,
-                    code=patched_code,
-                    args_schema=extract_args_schema(patched_code)
-                )
+            if success and tool:
+                print("[Refiner] Gateway approved! Patch registered.")
 
                 # 5. Create ToolPatch record
                 if base_tool:
@@ -378,34 +439,67 @@ class Refiner:
                 return tool, error_reports
 
             else:
-                failure_snippet = verify_trace.std_err[:200] if verify_trace.std_err else "Unknown error"
-                print(f"  > Patch verification failed: {failure_snippet[:100]}...")
+                failure_snippet = ""
+                for stage in report.stages:
+                    if stage.result.value == 'fail':
+                        failure_snippet = stage.message[:200]
+                        break
+
+                print(f"  > Gateway rejected: {failure_snippet[:100]}...")
 
                 # Track this failed attempt
                 patch_history.append({
                     "approach": f"Fixed {error_report.error_type}: {error_report.root_cause[:100]}",
-                    "failure_reason": failure_snippet
+                    "failure_reason": failure_snippet or "Gateway verification failed"
                 })
 
                 current_code = patched_code
-                current_trace = verify_trace
+                # Create a trace from the report for next iteration
+                current_trace = ExecutionTrace(
+                    trace_id=f"t_{uuid.uuid4().hex[:12]}",
+                    task_id=f"refine_{attempt}",
+                    input_args={},
+                    output_repr="",
+                    exit_code=1,
+                    std_out="",
+                    std_err=failure_snippet,
+                    execution_time_ms=0
+                )
 
         print(f"[Refiner] Failed after {max_attempts} attempts")
         return None, error_reports
+
+    def _infer_category(self, task: str) -> str:
+        """Infer tool category from task description."""
+        task_lower = task.lower()
+        if any(kw in task_lower for kw in ['获取', 'fetch', 'get', '查询', '历史', 'price', 'quote']):
+            if any(kw in task_lower for kw in ['calculate', 'calc', '计算', 'rsi', 'macd', 'bollinger']):
+                return 'calculation'
+            return 'fetch'
+        elif any(kw in task_lower for kw in ['if ', 'return true', 'return false', 'signal', 'divergence', 'portfolio']):
+            return 'composite'
+        else:
+            return 'calculation'
 
 
 def refine_tool(
     tool: ToolArtifact,
     trace: ExecutionTrace,
-    task: str
+    task: str,
+    category: Optional[str] = None,
+    contract: Optional[ToolContract] = None,
 ) -> Optional[ToolArtifact]:
     """
     Convenience function to refine a tool.
+
+    All registration goes through VerificationGateway.
 
     Args:
         tool: Tool that failed
         trace: Failed execution trace
         task: Task description
+        category: Optional tool category
+        contract: Optional contract for validation
 
     Returns:
         Refined tool or None
@@ -415,7 +509,9 @@ def refine_tool(
         code=tool.code_content,
         task=task,
         trace=trace,
-        base_tool=tool
+        base_tool=tool,
+        category=category,
+        contract=contract,
     )
     return refined_tool
 

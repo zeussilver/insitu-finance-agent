@@ -10,7 +10,9 @@ This project reproduces the core tool evolution loop from the paper "Yunjue Agen
 
 ### Current Milestone
 
-**Architecture Overhaul (Option C)** - Completed. Achieved **85% pass rate** (17/20) with capability-based, contract-validated architecture.
+**Phase 1B Flaw Resolution** - Completed. Production-ready architecture with centralized constraints, verification gateway, and benchmark matrix.
+
+**Previous: Architecture Overhaul (Option C)** - Achieved **85% pass rate** (17/20) with capability-based, contract-validated architecture.
 
 ### Core Principles
 
@@ -29,11 +31,22 @@ This project reproduces the core tool evolution loop from the paper "Yunjue Agen
 - `fetch`: Same as calculation + yfinance, hashlib, pathlib
 - `composite`: Same as calculation
 
-**Multi-Stage Verification Pipeline**:
+**Multi-Stage Verification Pipeline** (via VerificationGateway):
 1. AST_SECURITY - Capability-specific import/call rules
 2. SELF_TEST - Built-in assert tests pass
 3. CONTRACT_VALID - Output matches contract constraints
 4. INTEGRATION - Real data test (fetch tools only)
+
+**VerificationGateway** - Single enforcement point for all tool registration:
+- All tool registrations route through `gateway.submit()`
+- Creates rollback checkpoints before registration
+- Logs all registration attempts (success/failure)
+- Integrates EvolutionGatekeeper for approval tiers
+
+**Three-Tier Evolution Gates**:
+- `AUTO` - Execute immediately (read-only operations)
+- `CHECKPOINT` - Log + create rollback point (new tool creation)
+- `APPROVAL` - Require human approval (persist to library, modify rules)
 
 ## Quick Start
 
@@ -154,6 +167,9 @@ python benchmarks/run_eval.py --agent evolving --run-id run1
 # Run with fresh registry (clear all tools first)
 python benchmarks/run_eval.py --clear-registry --run-id fresh_run
 
+# Run with config matrix (cold_start or warm_start)
+python benchmarks/run_eval.py --config cold_start --run-id ci_test
+
 # Run security-only evaluation
 python benchmarks/run_eval.py --security-only
 
@@ -182,6 +198,8 @@ fin_evo_agent/
 │   │   └── generated/        # Evolved tools (e.g., calc_rsi_v0.1.0_xxx.py)
 │   ├── cache/                # [Git Ignore] Parquet snapshots
 │   └── logs/                 # thinking_process logs, security_violations.log
+├── configs/
+│   └── constraints.yaml      # ✅ NEW: Centralized runtime constraints
 ├── src/
 │   ├── config.py             # Global configuration
 │   ├── core/
@@ -190,19 +208,43 @@ fin_evo_agent/
 │   │   ├── registry.py       # Tool registration & retrieval
 │   │   ├── executor.py       # AST check + sandbox execution
 │   │   ├── task_executor.py  # Task orchestration
-│   │   ├── capabilities.py   # ✅ NEW: Capability enums & module mappings
-│   │   ├── contracts.py      # ✅ NEW: Contract definitions for 20 tasks
-│   │   └── verifier.py       # ✅ NEW: Multi-stage verification pipeline
+│   │   ├── capabilities.py   # Capability enums & module mappings
+│   │   ├── contracts.py      # Contract definitions for 20 tasks
+│   │   ├── verifier.py       # Multi-stage verification pipeline
+│   │   ├── gateway.py        # ✅ NEW: VerificationGateway single enforcement point
+│   │   ├── gates.py          # ✅ NEW: EvolutionGate enum & Gatekeeper
+│   │   └── constraints.py    # ✅ NEW: Centralized constraints loader
 │   ├── evolution/
-│   │   ├── synthesizer.py    # Generate → Verify → Register (with verifier)
-│   │   └── refiner.py        # Error Analysis → Patch → Re-verify
+│   │   ├── synthesizer.py    # Generate → Gateway Submit (uses gateway exclusively)
+│   │   └── refiner.py        # Error Analysis → Patch → Gateway Submit
+│   ├── data/
+│   │   ├── interfaces.py     # ✅ NEW: DataProvider Protocol
+│   │   └── adapters/         # ✅ NEW: Pluggable data adapters
+│   │       ├── yfinance_adapter.py
+│   │       └── mock_adapter.py
+│   ├── extraction/           # ✅ NEW: Schema extraction module
+│   │   ├── schema.py         # Task schema extraction
+│   │   └── indicators.py     # Technical indicator extraction
 │   └── finance/
 │       ├── data_proxy.py     # yfinance caching + retry decorator
 │       └── bootstrap.py      # Initial yfinance tool set (5 tools)
+├── tests/                    # ✅ NEW: Extracted test suite
+│   ├── core/
+│   │   ├── test_executor.py
+│   │   └── test_gateway.py
+│   ├── evolution/
+│   │   └── test_refiner.py
+│   ├── extraction/
+│   │   ├── golden_schemas.json
+│   │   ├── test_schema.py
+│   │   └── test_indicators.py
+│   └── data/
+│       └── test_adapters.py
 └── benchmarks/
     ├── tasks.jsonl            # 20 benchmark tasks with contract_id
     ├── security_tasks.jsonl   # 5 security test cases
-    ├── run_eval.py            # Evaluation runner
+    ├── config_matrix.yaml     # ✅ NEW: Benchmark configuration matrix
+    ├── run_eval.py            # Evaluation runner (with --config support)
     └── compare_runs.py        # Run comparison tool
 ```
 
@@ -291,7 +333,36 @@ Target metrics:
 4. **Network resilience**: Retry with exponential backoff for data fetching
 5. **Category-specific LLM prompts**: FETCH_SYSTEM_PROMPT, CALCULATE_SYSTEM_PROMPT, COMPOSITE_SYSTEM_PROMPT
 
-## Recent Changes (Architecture Overhaul)
+## Recent Changes (Phase 1B Flaw Resolution)
+
+### New Infrastructure
+- `configs/constraints.yaml` - Centralized runtime constraints (execution limits, capability rules)
+- `src/core/constraints.py` - YAML loader with validation
+- `src/core/gateway.py` - VerificationGateway single enforcement point
+- `src/core/gates.py` - Three-tier evolution gate system
+- `src/data/interfaces.py` - DataProvider Protocol for pluggable adapters
+- `src/data/adapters/` - yfinance and mock adapter implementations
+- `src/extraction/` - Schema extraction module with golden test coverage
+- `tests/` - Extracted test suite (102+ tests)
+- `benchmarks/config_matrix.yaml` - Benchmark configuration with PR merge gates
+
+### Key Architectural Changes
+- **Gateway Enforcement**: All tool registration routes through `VerificationGateway.submit()`
+- **Centralized Constraints**: Single source of truth in `configs/constraints.yaml`
+- **Data Abstraction**: DataProvider protocol with pluggable adapters
+- **Test Isolation**: Self-tests extracted from `__main__` blocks to `tests/`
+- **Evolution Gates**: Three-tier approval system (AUTO/CHECKPOINT/APPROVAL)
+- **Benchmark Matrix**: YAML-based config for cold_start/warm_start with PR merge gates
+
+### Modified Files
+- `src/evolution/synthesizer.py` - Uses gateway exclusively, no direct registry calls
+- `src/evolution/refiner.py` - Uses gateway exclusively, no direct registry calls
+- `src/core/executor.py` - Imports from centralized constraints
+- `src/core/verifier.py` - Imports from centralized constraints
+- `src/core/capabilities.py` - Delegates to centralized constraints
+- `benchmarks/run_eval.py` - Added --config CLI, gate validation, config metadata
+
+## Previous Changes (Architecture Overhaul)
 
 ### New Files
 - `src/core/capabilities.py` - ToolCapability enum, module mappings
@@ -347,6 +418,7 @@ Target metrics:
 When context is compacted, preserve:
 - Modified files list above
 - Key decisions documented
-- Test commands: `python src/core/verifier.py`, `python benchmarks/run_eval.py --clear-registry`
-- **Current status**: 85% pass rate achieved, target 80% met
-- Verification command: `python benchmarks/run_eval.py --clear-registry --run-id verify`
+- Test commands: `pytest tests/`, `python benchmarks/run_eval.py --config cold_start`
+- **Current status**: 85% pass rate achieved, Phase 1B complete (46/46 tasks)
+- Verification command: `python benchmarks/run_eval.py --config cold_start --run-id verify`
+- **Key Pattern**: All tool registration goes through `gateway.submit()` - never call `registry.register()` directly

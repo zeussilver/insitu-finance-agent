@@ -7,8 +7,11 @@ Features:
 """
 
 import re
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 from openai import OpenAI
+
+if TYPE_CHECKING:
+    from src.core.contracts import ToolContract
 
 import sys
 sys.path.insert(0, str(__file__).rsplit("/", 3)[0])
@@ -24,13 +27,32 @@ CALCULATE_SYSTEM_PROMPT = """You are a financial calculation tool generator. Gen
 2. Include a comprehensive docstring with Args and Returns sections
 3. Use ONLY pandas and numpy for calculations - NO talib, NO external indicator libraries
 4. Accept price/financial data as function ARGUMENTS (e.g., `prices: list` or `prices: pd.Series`)
-5. Do NOT call yfinance, akshare, or any data API inside the function - data is passed IN
-6. Return typed results: float for single values, dict for multiple values, bool for conditions
-7. Include 2 assert tests in `if __name__ == '__main__':` block using INLINE sample data
+5. Return typed results: float for single values, dict for multiple values, bool for conditions
+6. Include 2 assert tests in `if __name__ == '__main__':` block using INLINE sample data
 
 Output format:
 1. First, explain your reasoning inside <think>...</think> tags
 2. Then provide the code inside ```python...``` code block
+
+═══════════════════════════════════════════════════════════════════════════════
+CRITICAL CONSTRAINT - READ CAREFULLY - YOUR CODE WILL BE REJECTED IF VIOLATED:
+═══════════════════════════════════════════════════════════════════════════════
+
+Calculation tools CANNOT fetch data. You MUST NOT import or use:
+  ❌ yfinance (import yfinance, import yfinance as yf, yf.Ticker, etc.)
+  ❌ requests, urllib, httpx, aiohttp, akshare
+  ❌ Any network library whatsoever
+
+WHY: Calculation tools perform PURE COMPUTATIONS on data PASSED IN as arguments.
+Data fetching is done by separate "fetch" tools BEFORE your function is called.
+
+Your function will receive data like this:
+  calc_rsi(prices=[100, 101, 102, ...], period=14)
+
+NOT like this (WRONG - will be BLOCKED):
+  calc_rsi(symbol="AAPL", period=14)  # Then fetches data internally - WRONG!
+
+═══════════════════════════════════════════════════════════════════════════════
 
 IMPORTANT - Parameter Naming Convention (MUST follow exactly):
 - For single price series: use `prices` (list of floats)
@@ -44,12 +66,15 @@ For dict outputs (like KDJ, Bollinger, MACD), use lowercase keys:
 - Bollinger: {'upper': ..., 'middle': ..., 'lower': ...}
 - MACD: {'macd': ..., 'signal': ..., 'histogram': ...}
 
-IMPORTANT:
-- Allowed imports: pandas, numpy, datetime, json, math, decimal, collections, re, typing
-- FORBIDDEN inside generated tools: yfinance, akshare, talib, requests, urllib, httpx, aiohttp
-- Never use: os, sys, subprocess, shutil, eval, exec, compile
-- Function names should be GENERIC (e.g., `calc_rsi`, not `calc_aapl_rsi`)
-- Test data must be INLINE hardcoded lists, NOT fetched from APIs
+ALLOWED IMPORTS (only these):
+- pandas, numpy, datetime, json, math, decimal, collections, re, typing
+
+FORBIDDEN IMPORTS (code will be BLOCKED):
+- yfinance, akshare, talib, requests, urllib, httpx, aiohttp
+- os, sys, subprocess, shutil, socket, ctypes, pickle
+
+Function names should be GENERIC (e.g., `calc_rsi`, not `calc_aapl_rsi`)
+Test data must be INLINE hardcoded lists, NOT fetched from APIs
 
 SECURITY REQUIREMENTS (violations will be BLOCKED and task will FAIL):
 - NEVER use: os, sys, subprocess, shutil, builtins, socket, ctypes, pickle
@@ -99,20 +124,42 @@ FETCH_SYSTEM_PROMPT = """You are a financial data fetcher tool generator. Genera
 
 1. Use yfinance to fetch real market data
 2. Include complete type hints and comprehensive docstring
-3. Return structured data: pandas DataFrame, float, or dict
-4. Handle errors gracefully (network issues, invalid symbols)
-5. Include 2 assert tests in `if __name__ == '__main__':` block
+3. Handle errors gracefully (network issues, invalid symbols)
+4. Include 2 assert tests in `if __name__ == '__main__':` block
 
 Output format:
 1. First, explain your reasoning inside <think>...</think> tags
 2. Then provide the code inside ```python...``` code block
 
+═══════════════════════════════════════════════════════════════════════════════
+CRITICAL - RETURN TYPE MUST MATCH THE TASK:
+═══════════════════════════════════════════════════════════════════════════════
+
+Different tasks require different return types. Match your return type to the task:
+
+| Task Type                    | Return Type    | Example                          |
+|------------------------------|----------------|----------------------------------|
+| "获取市值/revenue/财务数据"   | float          | return 2500000000000.0           |
+| "获取股价/close price/quote" | float          | return 185.50                    |
+| "获取历史OHLCV数据"          | pd.DataFrame   | return df[['Date','Close',...]]  |
+| "获取公司信息/简介"          | dict           | return {'name': ..., 'sector':..}|
+
+WRONG (will fail contract validation):
+  Task: "获取AAPL的市值"
+  Return: DataFrame with all historical data  # ❌ Should return float!
+
+CORRECT:
+  Task: "获取AAPL的市值"
+  Return: float(ticker.info.get('marketCap', 0))  # ✅ Returns numeric value
+
+═══════════════════════════════════════════════════════════════════════════════
+
 IMPORTANT:
-- Allowed imports: pandas, numpy, datetime, json, yfinance, hashlib, typing
+- Allowed imports: pandas, numpy, datetime, json, yfinance, hashlib, typing, warnings
 - FORBIDDEN: os, sys, subprocess, shutil, eval, exec, compile, urllib3, requests, aiohttp, httpx
 - For warning suppression (e.g., yfinance SSL warnings), use: import warnings; warnings.filterwarnings('ignore')
 - Handle edge cases: invalid symbols, empty data, network timeouts
-- Return clear error indicators (None, empty DataFrame) rather than raising exceptions
+- Return clear error indicators (None, 0.0, empty DataFrame) rather than raising exceptions
 
 SECURITY REQUIREMENTS (violations will be BLOCKED and task will FAIL):
 - NEVER use: os, sys, subprocess, shutil, builtins, socket, ctypes, pickle
@@ -120,7 +167,35 @@ SECURITY REQUIREMENTS (violations will be BLOCKED and task will FAIL):
 - NEVER access: __class__, __bases__, __subclasses__, __dict__, __globals__, __builtins__
 - Code with these patterns will be automatically rejected
 
-EXAMPLE of correct fetch pattern:
+EXAMPLE 1 - Fetching a SINGLE VALUE (market cap, price, etc.):
+```python
+import yfinance as yf
+from typing import Optional
+
+def get_market_cap(symbol: str) -> float:
+    \"\"\"Fetch stock market capitalization.
+
+    Args:
+        symbol: Stock ticker symbol (e.g., 'AAPL')
+
+    Returns:
+        Market cap as a float, or 0.0 if unavailable
+    \"\"\"
+    try:
+        ticker = yf.Ticker(symbol)
+        info = ticker.info
+        return float(info.get('marketCap', 0))
+    except Exception:
+        return 0.0
+
+if __name__ == "__main__":
+    cap = get_market_cap('AAPL')
+    assert isinstance(cap, float), "Should return float"
+    assert cap > 0, "AAPL should have positive market cap"
+    print("Test passed!")
+```
+
+EXAMPLE 2 - Fetching HISTORICAL DATA (OHLCV DataFrame):
 ```python
 import yfinance as yf
 import pandas as pd
@@ -144,13 +219,11 @@ def get_stock_hist(symbol: str, start: str, end: str) -> Optional[pd.DataFrame]:
         if df.empty:
             return None
         df = df.reset_index()
-        df = df.rename(columns={'index': 'Date'})
         return df[['Date', 'Open', 'High', 'Low', 'Close', 'Volume']]
     except Exception:
         return None
 
 if __name__ == "__main__":
-    # Test with a known symbol
     df = get_stock_hist('AAPL', '2023-01-01', '2023-01-10')
     assert df is not None, "Should return data for valid symbol"
     assert 'Close' in df.columns, "Should have Close column"
@@ -164,14 +237,33 @@ COMPOSITE_SYSTEM_PROMPT = """You are a financial composite tool generator. Gener
 
 1. Combine multiple calculations or conditions
 2. Accept all necessary data as function ARGUMENTS (prices, volumes, etc.)
-3. Do NOT call yfinance - all data is passed IN as arguments
-4. Return clear results: bool for conditions, float/dict for calculations
-5. Include type hints and comprehensive docstring
-6. Include 2 assert tests in `if __name__ == '__main__':` block
+3. Return clear results: bool for conditions, float/dict for calculations
+4. Include type hints and comprehensive docstring
+5. Include 2 assert tests in `if __name__ == '__main__':` block
 
 Output format:
 1. First, explain your reasoning inside <think>...</think> tags
 2. Then provide the code inside ```python...``` code block
+
+═══════════════════════════════════════════════════════════════════════════════
+CRITICAL CONSTRAINT - READ CAREFULLY - YOUR CODE WILL BE REJECTED IF VIOLATED:
+═══════════════════════════════════════════════════════════════════════════════
+
+Composite tools CANNOT fetch data. You MUST NOT import or use:
+  ❌ yfinance (import yfinance, import yfinance as yf, yf.Ticker, etc.)
+  ❌ requests, urllib, httpx, aiohttp, akshare
+  ❌ Any network library whatsoever
+
+WHY: Composite tools COMPOSE calculations on data that is PASSED IN as arguments.
+Data fetching is done by separate "fetch" tools BEFORE your function is called.
+
+Your function will receive data like this:
+  my_composite_tool(prices=[100, 101, 102, ...], volumes=[1000, 1200, ...])
+
+NOT like this (WRONG - will be BLOCKED):
+  my_composite_tool(symbol="AAPL")  # Then fetches data internally - WRONG!
+
+═══════════════════════════════════════════════════════════════════════════════
 
 IMPORTANT - Parameter Naming Convention (MUST follow exactly):
 - For price data: use `prices` (list of floats)
@@ -183,17 +275,17 @@ IMPORTANT - Parameter Naming Convention (MUST follow exactly):
 For dict outputs, use lowercase keys:
 - Example: {'k': ..., 'd': ..., 'j': ...} NOT {'K': ..., 'D': ..., 'J': ...}
 
-IMPORTANT:
-- Allowed imports: pandas, numpy, datetime, json, math, decimal, collections, re, typing
-- FORBIDDEN: yfinance, akshare, talib, requests, urllib, os, sys, subprocess
-- For condition-based tools, return True/False explicitly
-- For multi-step calculations, document each step clearly
+ALLOWED IMPORTS (only these):
+- pandas, numpy, datetime, json, math, decimal, collections, re, typing
+
+FORBIDDEN IMPORTS (code will be BLOCKED):
+- yfinance, akshare, talib, requests, urllib, httpx, aiohttp
+- os, sys, subprocess, shutil, socket, ctypes, pickle
 
 SECURITY REQUIREMENTS (violations will be BLOCKED and task will FAIL):
 - NEVER use: os, sys, subprocess, shutil, builtins, socket, ctypes, pickle
 - NEVER call: eval, exec, compile, __import__, getattr, setattr, delattr, open, hasattr
 - NEVER access: __class__, __bases__, __subclasses__, __dict__, __globals__, __builtins__
-- Code with these patterns will be automatically rejected
 
 EXAMPLE of correct composite pattern:
 ```python
@@ -210,7 +302,7 @@ def check_ma_crossover_with_rsi(
     \"\"\"Check if MA5>MA20 and RSI<threshold (buy signal).
 
     Args:
-        prices: List of closing prices
+        prices: List of closing prices (PASSED IN, not fetched)
         short_window: Short MA period (default 5)
         long_window: Long MA period (default 20)
         rsi_period: RSI calculation period (default 14)
@@ -243,7 +335,7 @@ def check_ma_crossover_with_rsi(
     return ma_short > ma_long and rsi < rsi_threshold
 
 if __name__ == "__main__":
-    # Test case 1: Uptrend with low RSI
+    # Test case 1: Uptrend with low RSI - uses INLINE data, no API calls
     prices = [100, 99, 98, 97, 96, 95, 94, 93, 92, 91, 90, 89, 88, 87, 86, 85, 84, 83, 82, 85, 88, 91]
     result = check_ma_crossover_with_rsi(prices, 5, 20, 14, 30)
     assert isinstance(result, bool), "Should return boolean"
@@ -280,7 +372,7 @@ class LLMAdapter:
             self.client = OpenAI(
                 api_key=LLM_API_KEY,
                 base_url=LLM_BASE_URL,
-                timeout=60.0,
+                timeout=180.0,  # Increased for thinking mode
             )
         else:
             self.client = None
@@ -322,7 +414,8 @@ class LLMAdapter:
         self,
         task: str,
         error_context: Optional[str] = None,
-        category: Optional[str] = None
+        category: Optional[str] = None,
+        contract: Optional['ToolContract'] = None
     ) -> dict:
         """
         Generate tool code using Qwen3.
@@ -332,6 +425,7 @@ class LLMAdapter:
             error_context: Previous error traceback for refinement
             category: Tool category ('fetch', 'calculation', 'composite')
                       Used to select appropriate system prompt
+            contract: Optional contract defining expected output type
 
         Returns:
             {
@@ -361,6 +455,13 @@ class LLMAdapter:
 
         # Build user prompt
         user_prompt = f"Task: {task}"
+
+        # Add contract constraint (ultra-minimal but explicit)
+        if contract:
+            constraint = self._format_output_constraint(contract)
+            if constraint:
+                user_prompt += f"\n\nOUTPUT: {constraint}"
+
         if error_context:
             user_prompt += f"\n\nPrevious Error:\n{error_context}\n\nFix the issue."
 
@@ -398,6 +499,28 @@ class LLMAdapter:
             "raw_response": raw_response,
             "category": category
         }
+
+    def _format_output_constraint(self, contract: 'ToolContract') -> str:
+        """Format contract as ultra-minimal output constraint for LLM."""
+        output_type = contract.output_type.value if hasattr(contract.output_type, 'value') else str(contract.output_type)
+
+        if output_type == "numeric":
+            return "Return a single float. Do NOT return dict/DataFrame/list."
+        elif output_type == "dict":
+            keys = getattr(contract, 'required_keys', None) or []
+            if keys:
+                return f"Return a dict with keys: {keys}. Do NOT return DataFrame/list."
+            return "Return a dict. Do NOT return DataFrame/list."
+        elif output_type == "boolean":
+            return "Return True or False. Do NOT return 0/1 or string."
+        elif output_type == "dataframe":
+            keys = getattr(contract, 'required_keys', None) or []
+            if keys:
+                return f"Return a DataFrame with columns: {keys}."
+            return "Return a DataFrame."
+        elif output_type == "list":
+            return "Return a list. Do NOT return dict/DataFrame."
+        return ""
 
     def _mock_generate(self, task: str, category: str = None) -> str:
         """Mock LLM response for testing without API key."""
