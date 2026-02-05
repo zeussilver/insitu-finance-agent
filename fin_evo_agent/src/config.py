@@ -35,7 +35,7 @@ for p in [BOOTSTRAP_DIR, GENERATED_DIR, CACHE_DIR, LOGS_DIR, DB_PATH.parent]:
 # LLM Configuration (Qwen3 via DashScope OpenAI-compatible API)
 LLM_API_KEY = os.getenv("API_KEY", "")
 LLM_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-LLM_MODEL = "qwen3-max"
+LLM_MODEL = "qwen3-max-preview"
 LLM_TEMPERATURE = 0.1
 LLM_ENABLE_THINKING = True
 
