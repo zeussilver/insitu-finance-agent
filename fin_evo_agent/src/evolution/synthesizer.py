@@ -154,13 +154,15 @@ class Synthesizer:
         if not contract:
             contract = infer_contract_from_query(task, category)
 
-        # 1. Generate code using LLM with category-specific prompt
+        # 1. Generate code using LLM with category-specific prompt and contract
         print(f"[Synthesizer] Generating code for: {task}")
         print(f"[Synthesizer] Category: {category}")
+        if contract:
+            print(f"[Synthesizer] Contract: {contract.contract_id} (output_type={contract.output_type.value})")
         task_prompt = task
         if tool_name:
             task_prompt += f"\n\nPlease name the function: {tool_name}"
-        result = self.llm.generate_tool_code(task_prompt, category=category)
+        result = self.llm.generate_tool_code(task_prompt, category=category, contract=contract)
 
         if not result["code_payload"]:
             # Failed to generate code
@@ -172,7 +174,8 @@ class Synthesizer:
                 exit_code=1,
                 std_out="",
                 std_err="LLM failed to generate valid code",
-                execution_time_ms=0
+                execution_time_ms=0,
+                code_content=None  # No code generated
             )
             return None, trace
 
@@ -193,7 +196,8 @@ class Synthesizer:
                 exit_code=1,
                 std_out="",
                 std_err="Could not extract function name from generated code",
-                execution_time_ms=0
+                execution_time_ms=0,
+                code_content=code  # Store code for debugging
             )
             return None, trace
 
@@ -210,8 +214,8 @@ class Synthesizer:
             force=False,  # Respect gatekeeper approval
         )
 
-        # Create trace from verification report
-        trace = self._create_trace_from_report(task, report)
+        # Create trace from verification report (include code for P0-3 alignment)
+        trace = self._create_trace_from_report(task, report, code=code)
 
         if not success:
             print(f"[Synthesizer] Gateway rejected: {report.final_stage.name}")
@@ -261,9 +265,16 @@ class Synthesizer:
     def _create_trace_from_report(
         self,
         task: str,
-        report: VerificationReport
+        report: VerificationReport,
+        code: Optional[str] = None
     ) -> ExecutionTrace:
-        """Create ExecutionTrace from VerificationReport."""
+        """Create ExecutionTrace from VerificationReport.
+
+        Args:
+            task: Task description
+            report: Verification report from gateway
+            code: The code that was verified (P0-3: stored for Refiner alignment)
+        """
         # Collect error info from failed stages
         errors = []
         for stage in report.stages:
@@ -278,7 +289,8 @@ class Synthesizer:
             exit_code=0 if report.passed else 1,
             std_out=str(report.to_dict()),
             std_err="; ".join(errors) if errors else "",
-            execution_time_ms=0
+            execution_time_ms=0,
+            code_content=code  # P0-3: Store the exact code that was verified
         )
 
     def _update_tool_verification_fields(
@@ -356,7 +368,7 @@ class Synthesizer:
                         force=False,
                     )
 
-                    trace = self._create_trace_from_report(task, report)
+                    trace = self._create_trace_from_report(task, report, code=code)
                     traces.append(trace)
 
                     if success and tool:
@@ -402,9 +414,14 @@ class Synthesizer:
         # Import refiner here to avoid circular import
         from src.evolution.refiner import Refiner
 
-        # Get the generated code from LLM (need to regenerate since synthesize doesn't return it on failure)
-        result = self.llm.generate_tool_code(task, category=category)
-        code = result.get("code_payload")
+        # P0-3: Use code from trace instead of regenerating
+        # The trace now stores the exact code that was verified/failed
+        # This ensures Refiner patches the correct code, not a regenerated version
+        code = trace.code_content
+        if not code:
+            # Fallback to regeneration if trace doesn't have code (backward compatibility)
+            result = self.llm.generate_tool_code(task, category=category, contract=contract)
+            code = result.get("code_payload")
 
         if not code:
             return None, trace

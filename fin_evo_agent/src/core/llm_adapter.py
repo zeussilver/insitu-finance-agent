@@ -7,8 +7,11 @@ Features:
 """
 
 import re
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 from openai import OpenAI
+
+if TYPE_CHECKING:
+    from src.core.contracts import ToolContract
 
 import sys
 sys.path.insert(0, str(__file__).rsplit("/", 3)[0])
@@ -411,7 +414,8 @@ class LLMAdapter:
         self,
         task: str,
         error_context: Optional[str] = None,
-        category: Optional[str] = None
+        category: Optional[str] = None,
+        contract: Optional['ToolContract'] = None
     ) -> dict:
         """
         Generate tool code using Qwen3.
@@ -421,6 +425,7 @@ class LLMAdapter:
             error_context: Previous error traceback for refinement
             category: Tool category ('fetch', 'calculation', 'composite')
                       Used to select appropriate system prompt
+            contract: Optional contract defining expected output type
 
         Returns:
             {
@@ -450,6 +455,13 @@ class LLMAdapter:
 
         # Build user prompt
         user_prompt = f"Task: {task}"
+
+        # Add contract constraint (ultra-minimal but explicit)
+        if contract:
+            constraint = self._format_output_constraint(contract)
+            if constraint:
+                user_prompt += f"\n\nOUTPUT: {constraint}"
+
         if error_context:
             user_prompt += f"\n\nPrevious Error:\n{error_context}\n\nFix the issue."
 
@@ -487,6 +499,28 @@ class LLMAdapter:
             "raw_response": raw_response,
             "category": category
         }
+
+    def _format_output_constraint(self, contract: 'ToolContract') -> str:
+        """Format contract as ultra-minimal output constraint for LLM."""
+        output_type = contract.output_type.value if hasattr(contract.output_type, 'value') else str(contract.output_type)
+
+        if output_type == "numeric":
+            return "Return a single float. Do NOT return dict/DataFrame/list."
+        elif output_type == "dict":
+            keys = getattr(contract, 'required_keys', None) or []
+            if keys:
+                return f"Return a dict with keys: {keys}. Do NOT return DataFrame/list."
+            return "Return a dict. Do NOT return DataFrame/list."
+        elif output_type == "boolean":
+            return "Return True or False. Do NOT return 0/1 or string."
+        elif output_type == "dataframe":
+            keys = getattr(contract, 'required_keys', None) or []
+            if keys:
+                return f"Return a DataFrame with columns: {keys}."
+            return "Return a DataFrame."
+        elif output_type == "list":
+            return "Return a list. Do NOT return dict/DataFrame."
+        return ""
 
     def _mock_generate(self, task: str, category: str = None) -> str:
         """Mock LLM response for testing without API key."""

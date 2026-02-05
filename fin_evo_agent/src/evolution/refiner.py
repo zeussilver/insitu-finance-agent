@@ -223,7 +223,9 @@ class Refiner:
         original_code: str,
         task: str,
         attempt: int = 1,
-        previous_patches: Optional[List[dict]] = None
+        previous_patches: Optional[List[dict]] = None,
+        contract: Optional[ToolContract] = None,
+        category: Optional[str] = None
     ) -> Optional[str]:
         """
         Generate patched code based on error analysis.
@@ -234,6 +236,8 @@ class Refiner:
             task: Original task description
             attempt: Current attempt number (1-3)
             previous_patches: List of previous patch attempts with failure reasons
+            contract: Optional contract for output type guidance (P0-2)
+            category: Tool category for module guidance (P0-4)
 
         Returns:
             Patched code or None if generation failed
@@ -252,11 +256,43 @@ class Refiner:
         if error_report.error_type in ("ModuleNotFoundError", "ImportError"):
             module_guidance = MODULE_REPLACEMENT_GUIDE
 
+        # P0-2: Contract guidance section
+        contract_guidance = ""
+        if contract:
+            output_type = contract.output_type.value if hasattr(contract.output_type, 'value') else str(contract.output_type)
+            contract_guidance = f"\n## 输出要求 (OUTPUT REQUIREMENT)\n必须返回: {output_type}\n"
+            if output_type == "numeric":
+                contract_guidance += "返回单个 float 值，不要返回 dict/DataFrame/list\n"
+            elif output_type == "dict":
+                keys = getattr(contract, 'required_keys', None) or []
+                if keys:
+                    contract_guidance += f"返回包含这些键的 dict: {keys}\n"
+                else:
+                    contract_guidance += "返回一个 dict\n"
+            elif output_type == "boolean":
+                contract_guidance += "返回 True 或 False，不要返回 0/1 或字符串\n"
+            elif output_type == "dataframe":
+                keys = getattr(contract, 'required_keys', None) or []
+                if keys:
+                    contract_guidance += f"返回包含这些列的 DataFrame: {keys}\n"
+                else:
+                    contract_guidance += "返回一个 DataFrame\n"
+
+        # P0-4: Category-aware module guidance
+        if category == "fetch":
+            category_module_guidance = "可用模块: pandas, numpy, yfinance, datetime, json, warnings, hashlib, typing"
+        elif category == "calculation":
+            category_module_guidance = "可用模块: pandas, numpy, datetime, json, math, decimal, collections, re, typing (不要用 yfinance)"
+        elif category == "composite":
+            category_module_guidance = "可用模块: pandas, numpy, datetime, json, math, decimal, collections, re, typing (不要用 yfinance)"
+        else:
+            category_module_guidance = "只使用 pandas 和 numpy 进行计算 (不要使用 talib 或其他外部库)"
+
         patch_prompt = f"""修复以下Python代码中的错误。
 
 ## 原始任务
 {task}
-
+{contract_guidance}
 ## 原始代码
 ```python
 {original_code}
@@ -271,7 +307,7 @@ class Refiner:
 ## 修复要求
 1. 首先简要说明你将要修改什么以及为什么
 2. 修复错误，保持原有功能
-3. 只使用 pandas 和 numpy 进行计算 (不要使用 talib 或其他外部库)
+3. {category_module_guidance}
 4. 保留原有的类型注解和文档字符串
 5. 保留 if __name__ == '__main__' 中的测试用例
 6. 重要：不要修改测试断言 - 测试定义了期望行为，修复应使代码通过原始测试
@@ -342,14 +378,16 @@ class Refiner:
             print(f"  > Error type: {error_report.error_type}")
             print(f"  > Root cause: {error_report.root_cause[:100]}...")
 
-            # 2. Generate patch with history
+            # 2. Generate patch with history, contract, and category (P0-2, P0-4)
             print("[Refiner] Generating patch...")
             patched_code = self.generate_patch(
                 error_report,
                 current_code,
                 task,
                 attempt=attempt + 1,
-                previous_patches=patch_history if patch_history else None
+                previous_patches=patch_history if patch_history else None,
+                contract=contract,
+                category=category
             )
 
             if not patched_code:
