@@ -1,253 +1,280 @@
 # Codebase Structure
 
-**Analysis Date:** 2026-02-03
+**Analysis Date:** 2026-02-05
 
 ## Directory Layout
 
 ```
 fin_evo_agent/
-├── .venv/                      # Python virtual environment (gitignored)
-├── .env                        # API key configuration
-├── .gitignore                  # Git exclusions (cache/, logs/, .venv/)
-├── main.py                     # CLI entry point
-├── requirements.txt            # Locked dependencies
-├── benchmarks/                 # Evaluation suite
-│   ├── tasks.jsonl            # 20 benchmark tasks with contracts
-│   ├── security_tasks.jsonl   # 5 security test cases
-│   ├── run_eval.py            # Evaluation runner
-│   ├── compare_runs.py        # Run comparison tool
-│   └── results/               # JSON result files (timestamped)
-├── data/                       # Persistent storage
+├── main.py                    # CLI entry point
+├── requirements.txt           # Locked dependencies
+├── .env                       # API key configuration
+├── configs/                   # Configuration files
+│   └── constraints.yaml       # Centralized runtime constraints
+├── data/                      # Runtime data storage
 │   ├── db/                    # SQLite database
-│   │   └── evolution.db       # 5 tables (tool_artifacts, execution_traces, etc.)
-│   ├── artifacts/             # Tool code files (.py)
-│   │   ├── bootstrap/         # Initial atomic tools (5 yfinance wrappers)
-│   │   └── generated/         # Evolved tools (e.g., calc_rsi_v0.1.0_a5a0e879.py)
-│   ├── cache/                 # [Gitignored] Parquet data snapshots
-│   └── logs/                  # [Gitignored] Thinking process, security violations
-└── src/                        # Source code
-    ├── config.py              # Global configuration (paths, LLM settings)
-    ├── core/                  # System primitives
-    │   ├── models.py          # SQLModel definitions (5 tables + enums)
-    │   ├── registry.py        # Tool registration & retrieval
-    │   ├── executor.py        # AST security + subprocess sandbox
-    │   ├── task_executor.py   # Task orchestration (fetch + execute)
-    │   ├── llm_adapter.py     # Qwen3 API client + category prompts
-    │   ├── capabilities.py    # Capability enums & module mappings
-    │   ├── contracts.py       # Contract definitions (17 contracts)
-    │   └── verifier.py        # Multi-stage verification pipeline
-    ├── evolution/             # Tool generation & refinement
-    │   ├── synthesizer.py     # Generate → Verify → Register
-    │   └── refiner.py         # Error analysis → Patch → Re-verify
-    ├── finance/               # Domain-specific tools
-    │   ├── data_proxy.py      # yfinance caching with retry
-    │   └── bootstrap.py       # Initial tool creation
-    └── utils/                 # (Empty - reserved for helpers)
+│   ├── artifacts/             # Generated tool code files
+│   ├── cache/                 # Parquet data cache [Git Ignore]
+│   ├── logs/                  # Structured logs
+│   └── checkpoints/           # Rollback checkpoints
+├── src/                       # Core source code
+│   ├── config.py              # Global configuration
+│   ├── core/                  # Registry, execution, verification
+│   ├── evolution/             # Tool synthesis and refinement
+│   ├── finance/               # Bootstrap tools and data proxy
+│   ├── data/                  # Data provider abstraction
+│   ├── extraction/            # Schema and indicator extraction
+│   └── utils/                 # Shared utilities
+├── tests/                     # Isolated test suite
+│   ├── core/                  # Core module tests
+│   ├── evolution/             # Evolution module tests
+│   ├── data/                  # Data adapter tests
+│   └── extraction/            # Extraction module tests
+└── benchmarks/                # Evaluation suite
+    ├── run_eval.py            # Main evaluation runner
+    ├── compare_runs.py        # Run comparison tool
+    ├── tasks.jsonl            # 20 benchmark tasks
+    ├── security_tasks.jsonl   # 5 security test cases
+    ├── config_matrix.yaml     # Benchmark configuration matrix
+    ├── results/               # Evaluation results
+    └── baselines/             # Baseline comparison data
 ```
 
 ## Directory Purposes
 
-**`benchmarks/`:**
-- Purpose: Evaluation and testing infrastructure
-- Contains: Task definitions (JSONL), evaluation runner, comparison tools, result archives
-- Key files: `tasks.jsonl` (20 tasks with contract_id), `run_eval.py` (main evaluation script)
+**fin_evo_agent/ (root):**
+- Purpose: Project root with entry point and configuration
+- Contains: `main.py`, `requirements.txt`, `.env`, `.gitignore`
+- Key files:
+  - `main.py` - CLI commands (--init, --bootstrap, --task, --list, --security-check)
+  - `requirements.txt` - Locked dependencies (yfinance, openai, sqlmodel, pandas, pyyaml)
+  - `.env` - API_KEY for Qwen3 LLM
 
-**`data/db/`:**
-- Purpose: SQLite database storage
-- Contains: `evolution.db` (5 tables: ToolArtifact, ExecutionTrace, ErrorReport, ToolPatch, BatchMergeRecord)
-- Key files: `evolution.db`
+**configs/**
+- Purpose: Centralized configuration management
+- Contains: YAML configuration files
+- Key files:
+  - `constraints.yaml` - Runtime constraints (execution limits, capability rules, security allowlists)
 
-**`data/artifacts/bootstrap/`:**
-- Purpose: Initial atomic tools (not evolved)
-- Contains: 5 pre-built yfinance wrappers
-- Key files: `get_stock_hist_v0.1.0_*.py`, `get_financial_info_v0.1.0_*.py`, `get_spot_price_v0.1.0_*.py`, `get_index_daily_v0.1.0_*.py`, `get_etf_hist_v0.1.0_*.py`
+**data/**
+- Purpose: Runtime data storage (not version controlled except structure)
+- Contains: Database, artifacts, cache, logs, checkpoints
+- Key files:
+  - `db/evolution.db` - SQLite database with 5 tables
+  - `artifacts/bootstrap/*.py` - Initial yfinance tools (5 files)
+  - `artifacts/generated/*.py` - LLM-generated tools (format: `{name}_v{version}_{hash}.py`)
+  - `cache/*.parquet` - MD5-keyed data snapshots [Git Ignore]
+  - `logs/gateway.log` - Registration log
+  - `logs/gateway_attempts.jsonl` - Structured audit trail
+  - `checkpoints/*.json` - Rollback checkpoints
 
-**`data/artifacts/generated/`:**
-- Purpose: LLM-generated evolved tools
-- Contains: Tool code files with naming pattern `{name}_v{version}_{hash8}.py`
-- Key files: `calc_rsi_v0.1.0_*.py`, `calc_macd_v0.1.0_*.py`, `calc_bollinger_v0.1.0_*.py`
+**src/core/**
+- Purpose: Core engine for tool registry, execution, and verification
+- Contains: 13 Python modules
+- Key files:
+  - `models.py` - SQLModel schemas (ToolArtifact, ExecutionTrace, ErrorReport, ToolPatch, BatchMergeRecord)
+  - `registry.py` - Tool CRUD (register, get_by_name, get_by_id, list_tools, update_schema)
+  - `executor.py` - AST security check + subprocess sandbox
+  - `gateway.py` - VerificationGateway (single enforcement point)
+  - `verifier.py` - MultiStageVerifier (4 stages: AST → self-test → contract → integration)
+  - `contracts.py` - 17 ToolContract definitions
+  - `capabilities.py` - ToolCapability enum with module allowlists
+  - `constraints.py` - Load constraints from YAML
+  - `gates.py` - EvolutionGate enum, EvolutionGatekeeper, CheckpointManager
+  - `task_executor.py` - Task orchestration (extract symbol/dates, fetch data, execute tool)
+  - `llm_adapter.py` - Qwen3 API client with category-specific prompts
 
-**`data/cache/`:**
-- Purpose: Reproducible data access (Parquet snapshots)
-- Contains: Cached yfinance responses (MD5-keyed parquet files)
-- Key files: `{md5_hash}.parquet` (auto-generated, gitignored)
+**src/evolution/**
+- Purpose: LLM-driven tool generation and repair
+- Contains: 2 Python modules
+- Key files:
+  - `synthesizer.py` - Generate → Gateway Submit → Refine loop
+  - `refiner.py` - Error analysis and patch generation (max 3 attempts)
 
-**`data/logs/`:**
-- Purpose: Debug and audit logs
-- Contains: LLM thinking process logs, security violation logs
-- Key files: `thinking_process_{timestamp}.txt`, `security_violations.log`
+**src/finance/**
+- Purpose: Financial data access with bootstrap tools
+- Contains: 2 Python modules
+- Key files:
+  - `bootstrap.py` - 5 bootstrap tool templates (get_stock_hist, get_financial_info, etc.)
+  - `data_proxy.py` - @with_retry decorator, parquet caching, get_stock_hist()
 
-**`src/core/`:**
-- Purpose: Core system components
-- Contains: Data models, registry, executor, verifier, contracts, capabilities
-- Key files: `models.py` (SQLModel tables), `verifier.py` (multi-stage pipeline), `executor.py` (sandbox)
+**src/data/**
+- Purpose: Data provider abstraction layer
+- Contains: `interfaces.py` and `adapters/` subdirectory
+- Key files:
+  - `interfaces.py` - DataProvider Protocol
+  - `adapters/yfinance_adapter.py` - Production adapter
+  - `adapters/mock_adapter.py` - Testing adapter
 
-**`src/evolution/`:**
-- Purpose: Tool lifecycle management
-- Contains: Synthesizer (generate + verify + register), Refiner (error analysis + patch)
-- Key files: `synthesizer.py`, `refiner.py`
+**src/extraction/**
+- Purpose: Schema and indicator extraction from natural language
+- Contains: 2 Python modules
+- Key files:
+  - `schema.py` - Extract task category, params from queries
+  - `indicators.py` - Identify technical indicator types (rsi, macd, bollinger, etc.)
 
-**`src/finance/`:**
-- Purpose: Financial domain logic
-- Contains: Data proxy (yfinance caching), bootstrap tools (atomic fetchers)
-- Key files: `data_proxy.py`, `bootstrap.py`
+**tests/**
+- Purpose: Isolated test suite (102+ tests)
+- Contains: Test modules mirroring src structure
+- Key files:
+  - `core/test_gateway.py` - Gateway enforcement tests
+  - `core/test_executor.py` - Security and sandbox tests
+  - `evolution/test_refiner.py` - Refinement loop tests
+  - `data/test_adapters.py` - Data provider protocol tests
+  - `extraction/test_schema.py` - Schema extraction tests (with golden_schemas.json)
+  - `extraction/test_indicators.py` - Indicator detection tests
+
+**benchmarks/**
+- Purpose: Evaluation suite for reproducibility
+- Contains: Evaluation runners, task definitions, results
+- Key files:
+  - `run_eval.py` - Main evaluation runner (supports --config, --clear-registry, --security-only)
+  - `compare_runs.py` - Compare two evaluation runs
+  - `tasks.jsonl` - 20 benchmark tasks (8 fetch, 8 calculation, 4 composite)
+  - `security_tasks.jsonl` - 5 security violation test cases
+  - `config_matrix.yaml` - cold_start vs warm_start configurations
+  - `results/*.json` - Evaluation results with timestamps
+  - `baselines/*.json` - Baseline results for regression testing
 
 ## Key File Locations
 
 **Entry Points:**
-- `fin_evo_agent/main.py`: CLI commands (init, bootstrap, task, list, security-check)
-- `fin_evo_agent/benchmarks/run_eval.py`: Evaluation runner
+- `fin_evo_agent/main.py` - CLI entry point
+- `fin_evo_agent/benchmarks/run_eval.py` - Evaluation entry point
+- `fin_evo_agent/src/finance/bootstrap.py` - Bootstrap registration entry point
 
 **Configuration:**
-- `fin_evo_agent/src/config.py`: Global paths, LLM settings, execution limits
-- `fin_evo_agent/.env`: API key (gitignored)
-- `fin_evo_agent/requirements.txt`: Dependency versions
+- `fin_evo_agent/src/config.py` - Global config (DB paths, LLM config, timeouts)
+- `fin_evo_agent/configs/constraints.yaml` - Centralized runtime constraints
+- `fin_evo_agent/.env` - API key (not committed to Git)
+- `fin_evo_agent/benchmarks/config_matrix.yaml` - Benchmark configurations
 
 **Core Logic:**
-- `fin_evo_agent/src/core/models.py`: 5 SQLModel tables + VerificationStage enum
-- `fin_evo_agent/src/core/verifier.py`: Multi-stage verification (AST → self-test → contract → integration)
-- `fin_evo_agent/src/core/executor.py`: AST security check + subprocess sandbox
-- `fin_evo_agent/src/evolution/synthesizer.py`: LLM code generation + verification + registration
+- `fin_evo_agent/src/core/gateway.py` - Single enforcement point
+- `fin_evo_agent/src/core/verifier.py` - Multi-stage verification
+- `fin_evo_agent/src/evolution/synthesizer.py` - Tool generation
+- `fin_evo_agent/src/core/task_executor.py` - Task orchestration
 
 **Testing:**
-- `fin_evo_agent/benchmarks/tasks.jsonl`: 20 benchmark tasks
-- `fin_evo_agent/benchmarks/security_tasks.jsonl`: 5 security test cases
+- `fin_evo_agent/tests/` - Isolated test suite (pytest-based)
+- `fin_evo_agent/benchmarks/run_eval.py` - End-to-end evaluation
 
 ## Naming Conventions
 
 **Files:**
-- Python modules: `snake_case.py` (e.g., `task_executor.py`, `llm_adapter.py`)
-- Generated tools: `{function_name}_v{version}_{hash8}.py` (e.g., `calc_rsi_v0.1.0_a5a0e879.py`)
-- Test files: `run_eval.py`, `compare_runs.py` (not using `.test.py` suffix)
+- Module files: `snake_case.py` (e.g., `task_executor.py`, `llm_adapter.py`)
+- Config files: `snake_case.yaml` or `UPPERCASE.md` for docs
+- Generated tools: `{function_name}_v{semver}_{hash8}.py` (e.g., `calc_rsi_v0.1.0_f42711fb.py`)
 
 **Directories:**
-- All lowercase: `core/`, `evolution/`, `finance/`, `benchmarks/`
-- Plural for collections: `artifacts/`, `logs/`, `results/`
+- Package directories: `snake_case/` (e.g., `src/core/`, `src/evolution/`)
+- Data directories: `lowercase/` (e.g., `data/cache/`, `data/logs/`)
 
 **Functions:**
-- snake_case: `extract_function_name()`, `verify_all_stages()`, `get_stock_hist()`
+- Public functions: `snake_case` (e.g., `get_stock_hist`, `execute_task`)
+- Private functions: `_snake_case` (e.g., `_extract_args_schema`, `_handle_simple_fetch`)
 
 **Classes:**
-- PascalCase: `ToolArtifact`, `MultiStageVerifier`, `TaskExecutor`, `Synthesizer`
+- PascalCase (e.g., `VerificationGateway`, `MultiStageVerifier`, `ToolExecutor`)
 
 **Constants:**
-- UPPER_SNAKE_CASE: `BANNED_MODULES`, `RETRY_MAX_ATTEMPTS`, `CONTRACTS`
+- UPPER_SNAKE_CASE (e.g., `DB_PATH`, `EXECUTION_TIMEOUT_SEC`, `LLM_MODEL`)
 
 ## Where to Add New Code
 
 **New Feature:**
-- Primary code: `fin_evo_agent/src/core/` for system-level features
-- Tests: Add to `fin_evo_agent/benchmarks/tasks.jsonl` with contract_id
+- Primary code: Determine layer (core/evolution/finance/data/extraction)
+- If adding verification stage: `src/core/verifier.py`
+- If adding tool capability: `configs/constraints.yaml` and `src/core/capabilities.py`
+- If adding contract: `src/core/contracts.py`
+- If adding LLM prompt: `src/core/llm_adapter.py`
+- Tests: `tests/{layer}/test_{module}.py`
 
 **New Component/Module:**
-- Implementation: `fin_evo_agent/src/{domain}/` (e.g., `src/analysis/` for new analysis tools)
+- Implementation: `src/{layer}/{module}.py`
+- Tests: `tests/{layer}/test_{module}.py`
+- Add to `__init__.py` if package-level import needed
 
-**Utilities:**
-- Shared helpers: `fin_evo_agent/src/utils/` (currently empty - reserved)
-
-**New Verification Stage:**
-- Add stage to `VerificationStage` enum in `src/core/models.py`
-- Implement `_verify_{stage}()` method in `src/core/verifier.py::MultiStageVerifier`
-- Update `verify_all_stages()` to include new stage
-
-**New Tool Category:**
-- Add to `ToolCategory` enum in `src/core/capabilities.py`
-- Define allowed modules in `CATEGORY_CAPABILITIES` mapping
-- Add category-specific prompt in `src/core/llm_adapter.py`
-
-**New Contract:**
-- Add to `CONTRACTS` dict in `src/core/contracts.py`
-- Define contract_id, input types, output type, constraints
-- Reference contract_id in benchmark task (tasks.jsonl)
+**New Tool (Generated):**
+- Implementation: Auto-generated to `data/artifacts/generated/`
+- Metadata: Auto-stored in SQLite `tool_artifacts` table
+- Never manually edit generated tools - use Refiner for repairs
 
 **New Bootstrap Tool:**
-- Implement in `src/finance/data_proxy.py` with `@DataProvider.reproducible` decorator
-- Register in `src/finance/bootstrap.py::create_bootstrap_tools()`
+- Implementation: Add code template to `src/finance/bootstrap.py`
+- Registration: Call via `create_bootstrap_tools()` function
+- Must include self-tests in `if __name__ == '__main__'` block
+
+**New Data Provider:**
+- Implementation: `src/data/adapters/{provider}_adapter.py`
+- Must satisfy DataProvider Protocol (get_historical, get_quote, get_financial_info, get_multi_historical)
+- Tests: `tests/data/test_adapters.py`
+
+**Utilities:**
+- Shared helpers: `src/utils/` (currently minimal - prefer layer-specific utilities)
+- Cross-cutting concerns: Consider adding to appropriate core module
+
+**New Benchmark Task:**
+- Task definition: Add to `benchmarks/tasks.jsonl` (format: `{"task_id": "...", "category": "...", "query": "...", "contract_id": "..."}`)
+- Contract: Add to `src/core/contracts.py` if new contract type
+- Expected output: Add to comparison baseline if regression testing
 
 ## Special Directories
 
-**`data/cache/`:**
-- Purpose: Reproducible data snapshots (Parquet files)
-- Generated: Yes (auto-created by data_proxy on first fetch)
-- Committed: No (gitignored for reproducibility - each dev has own cache)
+**data/cache/**
+- Purpose: Parquet snapshots for reproducible data
+- Generated: Yes (by @with_retry decorator)
+- Committed: No (Git Ignore)
+- Naming: MD5 hash of function call (e.g., `a3f2b8c9d1e0f7a6b5c4d3e2f1a0b9c8.parquet`)
 
-**`data/logs/`:**
-- Purpose: Debug and audit logs
-- Generated: Yes (auto-created by executor and llm_adapter)
-- Committed: No (gitignored - too large and environment-specific)
-
-**`data/artifacts/generated/`:**
+**data/artifacts/generated/**
 - Purpose: LLM-generated tool code
-- Generated: Yes (created by Synthesizer during tool registration)
-- Committed: Yes (essential for tracking tool evolution history)
+- Generated: Yes (by Synthesizer via Gateway)
+- Committed: Yes (for auditability)
+- Naming: `{function_name}_v{version}_{hash8}.py`
 
-**`.venv/`:**
-- Purpose: Python virtual environment
-- Generated: Yes (manual: `python -m venv .venv`)
-- Committed: No (gitignored - environment-specific)
+**data/artifacts/bootstrap/**
+- Purpose: Initial yfinance tools
+- Generated: Yes (by bootstrap.py)
+- Committed: Yes (foundational tools)
+- Naming: Same as generated tools
 
-**`benchmarks/results/`:**
-- Purpose: Evaluation run results (JSON files with timestamps)
-- Generated: Yes (created by run_eval.py)
-- Committed: Partial (important milestones committed, others gitignored)
+**data/db/**
+- Purpose: SQLite database storage
+- Generated: Yes (by init_db())
+- Committed: No (Git Ignore - only schema in code)
+- Naming: `evolution.db`
 
-## Import Path Patterns
+**data/logs/**
+- Purpose: Structured logging and audit trails
+- Generated: Yes (by Gateway, Executor)
+- Committed: No (Git Ignore)
+- Naming: `gateway.log`, `gateway_attempts.jsonl`, `thinking_process.log`, `security_violations.log`
 
-**Standard pattern for all modules:**
-```python
-import sys
-sys.path.insert(0, str(__file__).rsplit("/", 3)[0])
-from src.config import DB_PATH
-from src.core.models import ToolArtifact
-```
+**data/checkpoints/**
+- Purpose: Rollback checkpoints for failed operations
+- Generated: Yes (by CheckpointManager)
+- Committed: No (Git Ignore)
+- Naming: JSON files with checkpoint metadata
 
-**Reason:** Ensures imports work regardless of working directory
+**benchmarks/results/**
+- Purpose: Evaluation run results
+- Generated: Yes (by run_eval.py)
+- Committed: Yes (for tracking progress)
+- Naming: `{run_id}.json` (e.g., `post_round3_fix.json`)
 
-## File Naming Patterns
+**benchmarks/baselines/**
+- Purpose: Baseline results for regression testing
+- Generated: Manually curated
+- Committed: Yes
+- Naming: `{baseline_name}.json`
 
-**Tool artifacts:**
-- Pattern: `{function_name}_v{version}_{hash8}.py`
-- Example: `calc_rsi_v0.1.0_a5a0e879.py`
-- Location: `data/artifacts/generated/` or `data/artifacts/bootstrap/`
-
-**Cache files:**
-- Pattern: `{md5_hash}.parquet`
-- Example: `3f2a8c9d1e0b4a5c6d7e8f9a0b1c2d3e.parquet`
-- Location: `data/cache/`
-
-**Result files:**
-- Pattern: `{timestamp}.json` or `{run_id}.json`
-- Example: `20260203_134254.json`, `phase5_verification.json`
-- Location: `benchmarks/results/`
-
-**Log files:**
-- Pattern: `{log_type}_{timestamp}.txt` or `{log_type}.log`
-- Example: `thinking_process_20260203_134254.txt`, `security_violations.log`
-- Location: `data/logs/`
-
-## Architecture Decision Records
-
-**"Metadata in DB, Payload on Disk":**
-- SQLite stores tool metadata (name, version, hash, status)
-- Filesystem stores actual code files (.py)
-- Rationale: Git-trackable code, queryable metadata
-
-**Capability-Based Security:**
-- Different tool categories have different allowed modules
-- CALCULATE tools CANNOT import yfinance (blocked)
-- FETCH tools CAN import yfinance
-- Rationale: Prevent privilege escalation, enforce separation of concerns
-
-**Multi-Stage Verification:**
-- Tools must pass ALL stages to be promoted
-- Stages: AST security → self-test → contract → integration
-- Rationale: Eliminate implicit pass, ensure tool quality
-
-**Record-Replay Caching:**
-- First yfinance call: fetch from network, save to parquet
-- Subsequent calls: read from cache (no network)
-- Rationale: Reproducibility, offline development
+**tests/**
+- Purpose: Isolated test suite (pytest-based)
+- Generated: No (manually written)
+- Committed: Yes
+- Naming: `test_{module}.py` (e.g., `test_gateway.py`, `test_executor.py`)
 
 ---
 
-*Structure analysis: 2026-02-03*
+*Structure analysis: 2026-02-05*
