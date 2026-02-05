@@ -369,7 +369,7 @@ class LLMAdapter:
             self.client = OpenAI(
                 api_key=LLM_API_KEY,
                 base_url=LLM_BASE_URL,
-                timeout=60.0,
+                timeout=180.0,  # Increased for thinking mode
             )
         else:
             self.client = None
