@@ -166,6 +166,16 @@ class ToolRegistry:
         """
         return []
 
+    def find_by_contract_id(self, contract_id: str) -> List[ToolArtifact]:
+        """Find all non-FAILED tools with a given contract_id."""
+        with Session(self.engine) as session:
+            return list(session.exec(
+                select(ToolArtifact).where(
+                    ToolArtifact.contract_id == contract_id,
+                    ToolArtifact.status != ToolStatus.FAILED,
+                )
+            ).all())
+
     def find_by_schema(
         self,
         category: Optional[str] = None,

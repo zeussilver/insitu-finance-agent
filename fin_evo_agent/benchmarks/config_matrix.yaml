@@ -1,0 +1,78 @@
+# Benchmark Configuration Matrix
+# ================================
+# Defines benchmark configurations for different test scenarios.
+# Used by run_eval.py to control test behavior and PR merge gates.
+
+benchmark_matrix:
+  # Cold Start Configuration
+  # Fresh initialization with no cached state - primary CI/CD mode
+  cold_start:
+    clear_registry: true
+    clear_cache: true
+    description: "Fresh initialization, no cached state"
+    use_case: "CI/CD regression testing, measure generation capability"
+
+  # Warm Start Configuration
+  # Use accumulated tool library - measure reuse and convergence
+  warm_start:
+    clear_registry: false
+    clear_cache: false
+    description: "Use accumulated tool library"
+    use_case: "Measure tool reuse rate and convergence"
+
+  # Security-Only Configuration
+  # Run only security validation tasks
+  security_only:
+    clear_registry: false
+    clear_cache: false
+    tasks_file: "security_tasks.jsonl"
+    description: "Security validation only"
+    use_case: "Quick security regression check"
+
+  # Batch Evolution Configuration
+  # Multi-round parallel synthesis with tool deduplication
+  batch_evolution:
+    clear_registry: true
+    clear_cache: true
+    description: "Multi-round batch evolution (parallel synthesis + dedup)"
+    use_case: "Paper experiment: measure self-evolving capability across rounds"
+    parallel_tasks: 3
+    num_rounds: 3
+    task_timeout_sec: 300
+    skip_existing: true
+
+# Execution Settings
+execution:
+  timeout_per_task_sec: 300
+  max_refiner_attempts: 2
+  parallel_tasks: 1  # Sequential execution for reproducibility
+
+# PR Merge Gates
+# Thresholds that must be met for PR approval
+gates:
+  pr_merge:
+    # Block merge if accuracy drops more than 2% from baseline
+    accuracy_regression: -0.02
+
+    # All tool registrations must go through VerificationGateway
+    gateway_coverage: 1.00
+
+    # All security threats must be blocked
+    security_block_rate: 1.00
+
+    # Schema extraction accuracy on golden test set
+    schema_extraction_accuracy: 0.95
+
+# Target Metrics
+targets:
+  task_success_rate: 0.80    # 80% pass rate minimum
+  tool_reuse_rate: 0.30      # 30% reuse on second run
+  regression_rate: 0.00      # No regressions allowed
+  security_block_rate: 1.00  # 100% security blocks
+
+# Baseline Reference
+baseline:
+  file: "baseline.json"
+  passing_tasks: 17
+  total_tasks: 20
+  pass_rate: 0.85

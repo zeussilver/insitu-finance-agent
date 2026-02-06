@@ -11,12 +11,16 @@ Each tool is registered with:
 - Standalone code that uses DataProvider.reproducible for caching
 - Type hints and docstrings
 - Built-in test cases in if __name__ == '__main__' block
+
+Note: Bootstrap tools use inline caching for portability. For new code,
+prefer using the DataProvider adapter from src.data.adapters.
 """
 
 import sys
 sys.path.insert(0, str(__file__).rsplit("/", 3)[0])
 from src.core.registry import ToolRegistry
 from src.core.models import Permission, init_db
+from src.core.gateway import get_gateway
 
 
 # --- Bootstrap Tool Code Templates ---
@@ -155,11 +159,24 @@ def get_realtime_quote(symbol: str = None) -> pd.DataFrame:
         for sym in symbol_list:
             ticker = yf.Ticker(sym)
             info = ticker.fast_info
+            # Access fast_info attributes directly (yfinance property-based access)
+            try:
+                price = info.last_price
+            except Exception:
+                price = None
+            try:
+                market_cap = info.market_cap
+            except Exception:
+                market_cap = None
+            try:
+                volume = info.last_volume
+            except Exception:
+                volume = None
             rows.append({
                 "symbol": sym,
-                "price": getattr(info, "last_price", None),
-                "market_cap": getattr(info, "market_cap", None),
-                "volume": getattr(info, "last_volume", None),
+                "price": price,
+                "market_cap": market_cap,
+                "volume": volume,
             })
         df = pd.DataFrame(rows)
         if not df.empty:
@@ -285,6 +302,7 @@ BOOTSTRAP_TOOLS = [
     {
         "name": "get_stock_hist",
         "code": GET_STOCK_HIST_CODE,
+        "category": "fetch",
         "args_schema": {
             "symbol": "str",
             "start": "str",
@@ -295,6 +313,7 @@ BOOTSTRAP_TOOLS = [
     {
         "name": "get_financial_info",
         "code": GET_FINANCIAL_INFO_CODE,
+        "category": "fetch",
         "args_schema": {
             "symbol": "str"
         },
@@ -303,6 +322,7 @@ BOOTSTRAP_TOOLS = [
     {
         "name": "get_realtime_quote",
         "code": GET_REALTIME_QUOTE_CODE,
+        "category": "fetch",
         "args_schema": {
             "symbol": "str"
         },
@@ -311,6 +331,7 @@ BOOTSTRAP_TOOLS = [
     {
         "name": "get_index_daily",
         "code": GET_INDEX_DAILY_CODE,
+        "category": "fetch",
         "args_schema": {
             "symbol": "str",
             "start": "str",
@@ -321,6 +342,7 @@ BOOTSTRAP_TOOLS = [
     {
         "name": "get_etf_hist",
         "code": GET_ETF_HIST_CODE,
+        "category": "fetch",
         "args_schema": {
             "symbol": "str",
             "start": "str",
@@ -332,34 +354,53 @@ BOOTSTRAP_TOOLS = [
 
 
 def create_bootstrap_tools():
-    """Register all bootstrap tools to the database and disk."""
-    print("=== Registering Bootstrap Tools ===\n")
+    """Register all bootstrap tools via the VerificationGateway.
+
+    Bootstrap tools go through the same verification pipeline as evolved tools,
+    ensuring consistent security enforcement. Uses force=True to skip gatekeeper
+    approval since bootstrap tools are trusted initial tools.
+    """
+    print("=== Registering Bootstrap Tools via Gateway ===\n")
 
     # Ensure DB exists
     init_db()
 
-    registry = ToolRegistry()
+    gateway = get_gateway()
     registered = []
+    failed = []
 
     for tool_def in BOOTSTRAP_TOOLS:
-        print(f"Registering: {tool_def['name']}...")
+        print(f"Submitting: {tool_def['name']}...")
 
-        tool = registry.register(
-            name=tool_def["name"],
+        # Submit through gateway with force=True for bootstrap tools
+        success, tool, report = gateway.submit(
             code=tool_def["code"],
-            args_schema=tool_def["args_schema"],
-            permissions=tool_def["permissions"],
-            is_bootstrap=True
+            category=tool_def["category"],
+            contract=None,  # Bootstrap tools don't require contracts
+            task_id=f"bootstrap_{tool_def['name']}",
+            force=True,  # Skip gatekeeper approval for bootstrap
+            name=tool_def["name"],  # Explicit name to avoid helper function detection
         )
 
-        print(f"  > Version: {tool.semantic_version}")
-        print(f"  > File: {tool.file_path}")
-        print(f"  > Hash: {tool.content_hash[:8]}")
-        print()
+        if success and tool:
+            print(f"  > Version: {tool.semantic_version}")
+            print(f"  > File: {tool.file_path}")
+            print(f"  > Hash: {tool.content_hash[:8]}")
+            print(f"  > Verification: {report.final_stage.name}")
+            print()
+            registered.append(tool)
+        else:
+            print(f"  > FAILED: {report.final_stage.name}")
+            # Extract error messages from failed stages
+            for stage_result in report.stages:
+                if stage_result.result.value == "fail":
+                    print(f"    - {stage_result.stage.name}: {stage_result.message}")
+            print()
+            failed.append(tool_def['name'])
 
-        registered.append(tool)
-
-    print(f"[Done] Registered {len(registered)} bootstrap tools.")
+    print(f"[Done] Registered {len(registered)}/{len(BOOTSTRAP_TOOLS)} bootstrap tools via gateway.")
+    if failed:
+        print(f"[Warning] Failed to register: {', '.join(failed)}")
     return registered
 
 

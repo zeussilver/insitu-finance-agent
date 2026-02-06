@@ -17,3 +17,12 @@ data/db/
 
 # macOS
 .DS_Store
+
+# Claude Code internals
+.claude/
+
+# Planning artifacts
+.planning/
+
+# Local documents
+*.pdf

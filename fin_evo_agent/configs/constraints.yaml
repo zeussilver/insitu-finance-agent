@@ -1,0 +1,146 @@
+# Runtime constraints configuration
+# Single source of truth for all capability and execution rules
+
+execution:
+  timeout_sec: 30
+  memory_mb: 512
+  max_retries: 3
+  retry_delay_sec: 1.0
+
+capabilities:
+  calculation:
+    allowed_modules:
+      - pandas
+      - numpy
+      - datetime
+      - json
+      - math
+      - decimal
+      - collections
+      - re
+      - typing
+    banned_modules:
+      - yfinance
+      - akshare
+      - talib
+      - requests
+      - urllib3
+      - httpx
+      - aiohttp
+
+  fetch:
+    allowed_modules:
+      - pandas
+      - numpy
+      - datetime
+      - json
+      - math
+      - yfinance
+      - hashlib
+      - pathlib
+      - typing
+      - warnings
+      - urllib3
+    banned_modules: []
+
+  composite:
+    allowed_modules:
+      - pandas
+      - numpy
+      - datetime
+      - json
+      - math
+      - decimal
+      - collections
+      - re
+      - typing
+    banned_modules:
+      - yfinance
+      - akshare
+      - talib
+      - requests
+      - httpx
+      - aiohttp
+
+# Modules that are ALWAYS banned regardless of capability
+always_banned_modules:
+  - os
+  - sys
+  - subprocess
+  - shutil
+  - builtins
+  - importlib
+  - ctypes
+  - socket
+  - http
+  - urllib
+  - pickle
+  - shelve
+  - multiprocessing
+  - threading
+  - pty
+  - tty
+  - fcntl
+  - posix
+  - nt
+  - msvcrt
+  - code
+  - codeop
+  - commands
+  - popen2
+  - signal
+
+# Function calls that are ALWAYS banned
+always_banned_calls:
+  - eval
+  - exec
+  - compile
+  - __import__
+  - globals
+  - locals
+  - vars
+  - dir
+  - getattr
+  - setattr
+  - delattr
+  - hasattr
+  - open
+  - file
+  - input
+  - raw_input
+  - execfile
+  - reload
+  - breakpoint
+
+# Magic attributes that are ALWAYS banned
+always_banned_attributes:
+  - __class__
+  - __bases__
+  - __subclasses__
+  - __mro__
+  - __dict__
+  - __globals__
+  - __code__
+  - __builtins__
+  - __getattribute__
+  - __setattr__
+  - __delattr__
+  - __reduce__
+  - __reduce_ex__
+  - __getstate__
+  - __setstate__
+  - __init_subclass__
+  - __class_getitem__
+  - func_globals
+  - func_code
+
+verification:
+  max_retries: 3
+  retry_delay_sec: 1.0
+  schema_extraction_accuracy_gate: 0.95
+
+evolution_gates:
+  # Gate modes: prod (strict enforcement), dev (relaxed)
+  default_mode: dev
+  checkpoint_timeout_sec: 60
+  approval_timeout_sec: 300

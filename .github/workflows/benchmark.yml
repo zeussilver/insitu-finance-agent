@@ -35,7 +35,7 @@ on:
 jobs:
   benchmark:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 120
 
     steps:
       - name: Checkout code
@@ -70,6 +70,7 @@ jobs:
         working-directory: fin_evo_agent
         env:
           API_KEY: ${{ secrets.API_KEY }}
+          LLM_TIMEOUT: "90"
         run: |
           # Build command based on inputs
           CMD="python benchmarks/run_eval.py --agent evolving --run-id ci-${{ github.run_number }}"

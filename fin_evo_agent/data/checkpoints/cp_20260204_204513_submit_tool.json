@@ -1,0 +1,13 @@
+{
+  "id": "cp_20260204_204513_submit_tool",
+  "action": "submit_tool",
+  "context": {
+    "tool_name": "unsafe_func",
+    "category": "calculation",
+    "contract_id": null
+  },
+  "created_at": "2026-02-04T20:45:13.869732",
+  "status": "failed",
+  "error": "Verification failed",
+  "failed_at": "2026-02-04T20:45:13.869881"
+}

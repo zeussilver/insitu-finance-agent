@@ -4,6 +4,8 @@ Safety measures:
 1. AST static analysis blocks dangerous imports and calls
 2. Subprocess isolation with timeout and memory limits
 3. JSON-IPC for parameter passing (avoids eval)
+
+Constraints are loaded from the centralized constraints module.
 """
 
 import ast
@@ -14,12 +16,13 @@ import tempfile
 import time
 import uuid
 from pathlib import Path
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Set
 
 import sys as _sys
 _sys.path.insert(0, str(__file__).rsplit("/", 3)[0])
 from src.config import EXECUTION_TIMEOUT_SEC, EXECUTION_MEMORY_MB, ROOT_DIR
 from src.core.models import ExecutionTrace
+from src.core.constraints import get_constraints
 
 
 class SecurityException(Exception):
@@ -28,45 +31,39 @@ class SecurityException(Exception):
 
 
 class ToolExecutor:
-    """Secure executor with AST analysis and subprocess sandboxing."""
+    """Secure executor with AST analysis and subprocess sandboxing.
 
-    # Modules that are strictly banned
-    BANNED_MODULES = {
-        'os', 'sys', 'subprocess', 'shutil', 'builtins',
-        'importlib', 'ctypes', 'socket', 'http', 'urllib',
-        'pickle', 'shelve', 'multiprocessing', 'threading',
-        # Additional dangerous modules
-        'pty', 'tty', 'fcntl', 'posix', 'nt', 'msvcrt',
-        'code', 'codeop', 'commands', 'popen2', 'signal'
-    }
+    Constraints are loaded from configs/constraints.yaml via the centralized
+    constraints module.
+    """
 
-    # Function calls that are banned
-    BANNED_CALLS = {
-        'eval', 'exec', 'compile', '__import__',
-        'globals', 'locals', 'vars', 'dir',
-        'getattr', 'setattr', 'delattr',
-        # Additional dangerous calls
-        'hasattr', 'open', 'file', 'input', 'raw_input',
-        'execfile', 'reload', 'breakpoint'
-    }
+    def __init__(self):
+        """Initialize executor with constraints from config."""
+        self._constraints = get_constraints()
 
-    # Dangerous magic attributes for object introspection
-    BANNED_ATTRIBUTES = {
-        '__class__', '__bases__', '__subclasses__', '__mro__',
-        '__dict__', '__globals__', '__code__', '__builtins__',
-        '__getattribute__', '__setattr__', '__delattr__',
-        '__reduce__', '__reduce_ex__', '__getstate__', '__setstate__',
-        '__init_subclass__', '__class_getitem__',
-        'func_globals', 'func_code',
-    }
+    @property
+    def BANNED_MODULES(self) -> Set[str]:
+        """Get always banned modules from centralized config."""
+        return self._constraints.always_banned_modules
 
-    # Allowed modules for financial tools
-    ALLOWED_MODULES = {
-        'pandas', 'numpy', 'datetime', 'json',
-        'math', 'decimal', 'collections', 're',
-        'yfinance', 'typing', 'hashlib', 'warnings',
-        'urllib3'  # Allow warning suppression (yfinance dependency)
-    }
+    @property
+    def BANNED_CALLS(self) -> Set[str]:
+        """Get always banned calls from centralized config."""
+        return self._constraints.always_banned_calls
+
+    @property
+    def BANNED_ATTRIBUTES(self) -> Set[str]:
+        """Get always banned attributes from centralized config."""
+        return self._constraints.always_banned_attributes
+
+    @property
+    def ALLOWED_MODULES(self) -> Set[str]:
+        """Get default allowed modules (union of all categories)."""
+        # Return union of all category allowed modules for backwards compatibility
+        all_allowed = set()
+        for cat in ['calculation', 'fetch', 'composite']:
+            all_allowed.update(self._constraints.get_allowed_modules(cat))
+        return all_allowed
 
     def _normalize_encoding(self, code: str) -> str:
         """Strip encoding declarations to prevent PEP-263 bypass."""
@@ -350,40 +347,6 @@ if __name__ == "__main__":
 
 
 if __name__ == "__main__":
-    executor = ToolExecutor()
-
-    # Test 1: Safe code
-    safe_code = '''
-import pandas as pd
-
-def calc_ma(prices: list, window: int = 5) -> float:
-    """Calculate moving average."""
-    return float(pd.Series(prices).rolling(window).mean().iloc[-1])
-
-if __name__ == "__main__":
-    result = calc_ma([1, 2, 3, 4, 5, 6, 7], 3)
-    assert result == 6.0, f"Expected 6.0, got {result}"
-    print("Test passed!")
-'''
-    is_safe, error = executor.static_check(safe_code)
-    print(f"Safe code check: is_safe={is_safe}, error={error}")
-
-    # Test 2: Dangerous code
-    dangerous_codes = [
-        'import os; os.system("ls")',
-        'import subprocess; subprocess.run(["ls"])',
-        'eval("1+1")',
-        'exec("print(1)")',
-        '__import__("sys")',
-    ]
-
-    print("\nDangerous code checks:")
-    for code in dangerous_codes:
-        is_safe, error = executor.static_check(code)
-        print(f"  {code[:30]}... -> blocked={not is_safe}")
-
-    # Test 3: Execute safe code
-    print("\nExecuting safe code...")
-    trace = executor.execute(safe_code, "verify_only", {}, "test_task")
-    print(f"Exit code: {trace.exit_code}")
-    print(f"Result: {executor.extract_result(trace)}")
+    # Self-tests moved to tests/core/test_executor.py
+    # This block is kept minimal for verify_only mode support
+    print("ToolExecutor module loaded. Run pytest tests/core/test_executor.py for tests.")

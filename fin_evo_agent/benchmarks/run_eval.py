@@ -23,7 +23,9 @@ import signal
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
+import yaml
 
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -38,6 +40,10 @@ from src.finance.data_proxy import get_stock_hist
 from src.core.task_executor import TaskExecutor
 from src.core.contracts import get_contract_by_id, get_contract, ToolContract
 from src.core.verifier import MultiStageVerifier
+from src.core.gateway import VerificationGateway
+from src.evolution.merger import SimpleDeduplicator
+from src.evolution.batch_manager import BatchEvolutionManager
+from src.evolution.metrics import EvolutionMetrics
 
 
 # --- ANSI Color Codes ---
@@ -61,6 +67,16 @@ class ResultState:
     ERROR = "error"  # External error (API, timeout, network)
 
 
+class TaskTimeoutError(Exception):
+    """Raised when a single task exceeds its time budget."""
+    pass
+
+
+def _timeout_handler(signum, frame):
+    """Signal handler for SIGALRM — raises TaskTimeoutError."""
+    raise TaskTimeoutError("Task exceeded time budget")
+
+
 # --- Agent Configurations ---
 
 AGENT_CONFIGS = {
@@ -80,6 +96,67 @@ AGENT_CONFIGS = {
         "use_refiner": False
     }
 }
+
+
+# --- Configuration Matrix Loading ---
+
+def load_config_matrix(config_path: Optional[str] = None) -> Dict[str, Any]:
+    """Load benchmark configuration matrix from YAML file.
+
+    Args:
+        config_path: Path to config YAML file. If None, uses default config_matrix.yaml.
+
+    Returns:
+        Configuration dictionary with benchmark_matrix, execution, gates, targets.
+    """
+    if config_path is None:
+        config_path = Path(__file__).parent / "config_matrix.yaml"
+    else:
+        config_path = Path(config_path)
+
+    if not config_path.exists():
+        # Return default configuration if file doesn't exist
+        return {
+            "benchmark_matrix": {
+                "cold_start": {"clear_registry": True, "clear_cache": True},
+                "warm_start": {"clear_registry": False, "clear_cache": False}
+            },
+            "execution": {
+                "timeout_per_task_sec": 120,
+                "max_refiner_attempts": 3
+            },
+            "gates": {
+                "pr_merge": {
+                    "accuracy_regression": -0.02,
+                    "gateway_coverage": 1.00,
+                    "security_block_rate": 1.00
+                }
+            },
+            "targets": {
+                "task_success_rate": 0.80
+            }
+        }
+
+    with open(config_path, 'r', encoding='utf-8') as f:
+        return yaml.safe_load(f)
+
+
+def get_benchmark_config(config_name: str, matrix: Dict[str, Any]) -> Dict[str, Any]:
+    """Get specific benchmark configuration by name.
+
+    Args:
+        config_name: Name of the configuration (e.g., 'cold_start', 'warm_start')
+        matrix: Full configuration matrix loaded from YAML
+
+    Returns:
+        Configuration dict for the specified benchmark type.
+    """
+    benchmark_matrix = matrix.get("benchmark_matrix", {})
+    if config_name not in benchmark_matrix:
+        available = list(benchmark_matrix.keys())
+        raise ValueError(f"Unknown config '{config_name}'. Available: {available}")
+
+    return benchmark_matrix[config_name]
 
 
 # --- Error indicators for classification ---
@@ -211,6 +288,10 @@ class EvalRunner:
         # Timing
         self.start_time = None
 
+        # Configuration metadata (set by main() when --config is used)
+        self.config_name: Optional[str] = None
+        self.config_matrix: Optional[Dict[str, Any]] = None
+
     def _load_baseline(self) -> dict:
         """Load baseline from baseline.json for regression detection."""
         baseline_path = Path(__file__).parent / "baseline.json"
@@ -340,16 +421,36 @@ class EvalRunner:
         # Calculate total time
         total_time = time.time() - self.start_time if self.start_time else 0
 
+        # Build config section with matrix metadata if available
+        config_section = {
+            "timeout_per_task": 120,
+            "max_refiner_attempts": 3,
+            "clear_registry": True
+        }
+
+        # Add matrix configuration metadata if present
+        if self.config_name:
+            config_section["config_name"] = self.config_name
+        if self.config_matrix:
+            # Include execution settings from matrix
+            execution = self.config_matrix.get("execution", {})
+            config_section["timeout_per_task"] = execution.get("timeout_per_task_sec", 120)
+            config_section["max_refiner_attempts"] = execution.get("max_refiner_attempts", 3)
+
+            # Include gates for reference
+            gates = self.config_matrix.get("gates", {}).get("pr_merge", {})
+            config_section["gates"] = gates
+
+            # Include targets
+            targets = self.config_matrix.get("targets", {})
+            config_section["targets"] = targets
+
         output = {
             "run_id": self.run_id,
             "timestamp": datetime.now().isoformat(),
             "agent_type": self.agent_type,
             "interrupted": is_partial,
-            "config": {
-                "timeout_per_task": 120,
-                "max_refiner_attempts": 3,
-                "clear_registry": True
-            },
+            "config": config_section,
             "summary": {
                 "total_tasks": total,
                 "passed": passed,
@@ -428,16 +529,45 @@ class EvalRunner:
             sec_color = Colors.GREEN if sec_rate == 1.0 else Colors.RED
             print(f"\nSecurity Block Rate: {sec_color}{sec_rate*100:.0f}%{Colors.RESET}")
 
+        # PR Merge Gate Evaluation (if config matrix loaded)
+        gate_results = {}
+        if self.config_matrix:
+            gates = self.config_matrix.get("gates", {}).get("pr_merge", {})
+            baseline_rate = self.baseline.get("pass_rate", 0.85)
+
+            print(f"\n{Colors.BOLD}PR Merge Gates:{Colors.RESET}")
+
+            # Check accuracy regression
+            accuracy_threshold = gates.get("accuracy_regression", -0.02)
+            regression_amount = pass_rate - baseline_rate
+            accuracy_pass = regression_amount >= accuracy_threshold
+            gate_results["accuracy_regression"] = accuracy_pass
+            acc_color = Colors.GREEN if accuracy_pass else Colors.RED
+            print(f"  Accuracy Regression: {acc_color}{regression_amount:+.2%} (threshold: {accuracy_threshold:+.2%}){Colors.RESET}")
+
+            # Check security block rate
+            sec_threshold = gates.get("security_block_rate", 1.00)
+            if self.security_results["total"] > 0:
+                sec_rate = self.security_results["blocked"] / self.security_results["total"]
+                sec_pass = sec_rate >= sec_threshold
+                gate_results["security_block_rate"] = sec_pass
+                sec_color = Colors.GREEN if sec_pass else Colors.RED
+                print(f"  Security Block Rate: {sec_color}{sec_rate:.0%} (threshold: {sec_threshold:.0%}){Colors.RESET}")
+
         # Final verdict
         print("\n" + "=" * 60)
         all_pass = target_met and len(regressions) == 0
         if self.security_results["total"] > 0:
             all_pass = all_pass and (self.security_results["blocked"] == self.security_results["total"])
 
+        # Include gate results in final verdict
+        if gate_results:
+            all_pass = all_pass and all(gate_results.values())
+
         if all_pass:
-            print(f"{Colors.GREEN}{Colors.BOLD}ALL CRITERIA MET{Colors.RESET}")
+            print(f"{Colors.GREEN}{Colors.BOLD}ALL CRITERIA MET - PR MERGE APPROVED{Colors.RESET}")
         else:
-            print(f"{Colors.RED}{Colors.BOLD}CRITERIA NOT MET{Colors.RESET}")
+            print(f"{Colors.RED}{Colors.BOLD}CRITERIA NOT MET - PR MERGE BLOCKED{Colors.RESET}")
             if not target_met:
                 print(f"  - Pass rate {pass_rate*100:.1f}% < 80%")
             if regressions:
@@ -446,6 +576,10 @@ class EvalRunner:
                 sec_rate = self.security_results["blocked"] / self.security_results["total"]
                 if sec_rate < 1.0:
                     print(f"  - Security block rate {sec_rate*100:.0f}% < 100%")
+            if gate_results:
+                for gate_name, passed in gate_results.items():
+                    if not passed:
+                        print(f"  - Gate '{gate_name}' failed")
         print("=" * 60)
 
     def _handle_interrupt(self, signum, frame):
@@ -742,6 +876,80 @@ class EvalRunner:
         result["duration_seconds"] = round(time.time() - start_time, 2)
         return result
 
+    def run_batch_evolution(
+        self,
+        tasks_file: str,
+        num_rounds: int = 1,
+        max_workers: int = 3,
+    ) -> List[Dict]:
+        """Run batch evolution: parallel synthesis + dedup + metrics.
+
+        After evolution rounds complete, executes all tasks to measure results.
+        """
+        tasks_path = Path(tasks_file)
+        if not tasks_path.exists():
+            print(f"Error: Tasks file not found: {tasks_file}")
+            return []
+
+        tasks = []
+        with open(tasks_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                if line.strip():
+                    tasks.append(json.loads(line))
+
+        timeout_per_task = 300
+        if self.config_matrix:
+            execution = self.config_matrix.get("execution", {})
+            timeout_per_task = execution.get("timeout_per_task_sec", 300)
+
+        # Build batch components
+        gateway = VerificationGateway(self.verifier, self.registry)
+        deduplicator = SimpleDeduplicator(self.registry)
+        metrics_collector = EvolutionMetrics()
+
+        batch_manager = BatchEvolutionManager(
+            synthesizer=self.synthesizer,
+            gateway=gateway,
+            deduplicator=deduplicator,
+            registry=self.registry,
+            metrics_collector=metrics_collector,
+            max_workers=max_workers,
+            task_timeout_sec=timeout_per_task,
+        )
+
+        print(f"\n{'=' * 60}")
+        print(f"{Colors.BOLD}BATCH EVOLUTION MODE{Colors.RESET}")
+        print(f"  Tasks: {len(tasks)}, Rounds: {num_rounds}, Workers: {max_workers}")
+        print(f"{'=' * 60}")
+
+        self.start_time = time.time()
+
+        # Run evolution rounds
+        if num_rounds > 1:
+            reports = batch_manager.evolve_multi_round(tasks, num_rounds=num_rounds)
+        else:
+            reports = [batch_manager.evolve_batch(tasks)]
+
+        # Print evolution summary
+        print(f"\n{Colors.BOLD}Evolution Summary:{Colors.RESET}")
+        for report in reports:
+            color = Colors.GREEN if report.synthesis_rate >= 0.8 else Colors.YELLOW
+            print(
+                f"  Round {report.round_number}: "
+                f"{color}{report.synthesis_rate:.0%}{Colors.RESET} synthesis, "
+                f"{report.reuse_rate:.0%} reuse, "
+                f"{report.dedup_merged} dedup, "
+                f"{report.total_time_sec:.1f}s"
+            )
+
+        # Print metrics table
+        table = metrics_collector.generate_summary_table()
+        print(f"\n{table}")
+
+        # Now execute all tasks to measure actual task success rate
+        print(f"\n{Colors.BOLD}Executing tasks with evolved tools...{Colors.RESET}")
+        return self.run_all_tasks(tasks_file)
+
     def run_all_tasks(self, tasks_file: str) -> List[Dict]:
         """Run all tasks from a JSONL file."""
         tasks_path = Path(tasks_file)
@@ -755,20 +963,91 @@ class EvalRunner:
                 if line.strip():
                     tasks.append(json.loads(line))
 
-        print(f"=== Running {len(tasks)} tasks (Agent: {self.agent_type}) ===")
+        # Read per-task timeout from config matrix
+        timeout_per_task = 300  # default 5 min
+        if self.config_matrix:
+            execution = self.config_matrix.get("execution", {})
+            timeout_per_task = execution.get("timeout_per_task_sec", 300)
+
+        print(f"=== Running {len(tasks)} tasks (Agent: {self.agent_type}, timeout: {timeout_per_task}s/task) ===")
         self.start_time = time.time()
 
         # Register interrupt handler
         original_handler = signal.signal(signal.SIGINT, self._handle_interrupt)
+
+        # Use SIGALRM for per-task timeout (Unix only, works on macOS/Linux)
+        use_alarm = hasattr(signal, 'SIGALRM')
+        if use_alarm:
+            original_alarm_handler = signal.signal(signal.SIGALRM, _timeout_handler)
 
         try:
             for i, task in enumerate(tasks, 1):
                 if self.interrupted:
                     print(f"\n{Colors.YELLOW}Stopping after {i-1} tasks...{Colors.RESET}")
                     break
-                result = self.run_task(task, i, len(tasks))
+
+                task_start = time.time()
+                try:
+                    # Set per-task alarm
+                    if use_alarm:
+                        signal.alarm(timeout_per_task)
+
+                    result = self.run_task(task, i, len(tasks))
+
+                    # Cancel alarm on success
+                    if use_alarm:
+                        signal.alarm(0)
+
+                except TaskTimeoutError:
+                    if use_alarm:
+                        signal.alarm(0)
+                    elapsed = time.time() - task_start
+                    print(f"  {Colors.YELLOW}TIMEOUT{Colors.RESET} Task {task['task_id']} exceeded {timeout_per_task}s ({elapsed:.0f}s)")
+                    result = {
+                        "task_id": task["task_id"],
+                        "category": task.get("category", "unknown"),
+                        "query": task.get("query", ""),
+                        "agent_type": self.agent_type,
+                        "state": ResultState.ERROR,
+                        "success": False,
+                        "tool_source": "failed",
+                        "execution_time_ms": int(elapsed * 1000),
+                        "duration_seconds": round(elapsed, 2),
+                        "error_type": f"TaskTimeout ({timeout_per_task}s)",
+                        "generated_code": None,
+                        "output": None,
+                        "refiner_attempts": 0,
+                        "stage_on_timeout": "timeout",
+                        "contract_id": task.get("contract_id"),
+                        "verification_stage": 0,
+                    }
+                except Exception as e:
+                    if use_alarm:
+                        signal.alarm(0)
+                    elapsed = time.time() - task_start
+                    result = {
+                        "task_id": task["task_id"],
+                        "category": task.get("category", "unknown"),
+                        "query": task.get("query", ""),
+                        "agent_type": self.agent_type,
+                        "state": ResultState.ERROR,
+                        "success": False,
+                        "tool_source": "failed",
+                        "execution_time_ms": int(elapsed * 1000),
+                        "duration_seconds": round(elapsed, 2),
+                        "error_type": str(e)[:100],
+                        "generated_code": None,
+                        "output": None,
+                        "refiner_attempts": 0,
+                        "stage_on_timeout": None,
+                        "contract_id": task.get("contract_id"),
+                        "verification_stage": 0,
+                    }
                 self.results.append(result)
         finally:
+            if use_alarm:
+                signal.alarm(0)
+                signal.signal(signal.SIGALRM, original_alarm_handler)
             signal.signal(signal.SIGINT, original_handler)
 
         # Save results (complete or partial)
@@ -866,18 +1145,60 @@ def main():
                        help="Run security tasks only")
     parser.add_argument("--clear-registry", action="store_true",
                        help="Clear tool registry before running (fresh generation test)")
+    parser.add_argument("--config", type=str, default=None,
+                       choices=["cold_start", "warm_start", "security_only", "batch_evolution"],
+                       help="Use predefined benchmark configuration from config_matrix.yaml")
+    parser.add_argument("--config-file", type=str, default=None,
+                       help="Path to custom config_matrix.yaml file")
+    parser.add_argument("--batch", action="store_true",
+                       help="Use batch evolution mode (parallel synthesis + deduplication)")
+    parser.add_argument("--rounds", type=int, default=1,
+                       help="Number of evolution rounds (requires --batch)")
+    parser.add_argument("--workers", type=int, default=3,
+                       help="Max parallel workers for batch mode (default: 3)")
 
     args = parser.parse_args()
+
+    # Load configuration matrix
+    config_matrix = load_config_matrix(args.config_file)
+
+    # Apply predefined config if specified
+    if args.config:
+        bench_config = get_benchmark_config(args.config, config_matrix)
+        print(f"{Colors.CYAN}[Config] Using '{args.config}' configuration: {bench_config.get('description', '')}{Colors.RESET}")
+
+        # Override CLI args from config
+        if bench_config.get("clear_registry"):
+            args.clear_registry = True
+        if bench_config.get("tasks_file"):
+            args.tasks_file = str(Path(__file__).parent / bench_config["tasks_file"])
+        if args.config == "security_only":
+            args.security_only = True
+        if args.config == "batch_evolution":
+            args.batch = True
+            args.rounds = bench_config.get("num_rounds", 3)
+            args.workers = bench_config.get("parallel_tasks", 3)
 
     if args.security_only:
         run_security_evaluation()
     else:
         runner = EvalRunner(args.agent, args.run_id)
 
+        # Store config metadata for result output
+        runner.config_name = args.config
+        runner.config_matrix = config_matrix
+
         if args.clear_registry:
             runner.clear_registry()
 
-        runner.run_all_tasks(args.tasks_file)
+        if args.batch:
+            runner.run_batch_evolution(
+                args.tasks_file,
+                num_rounds=args.rounds,
+                max_workers=args.workers,
+            )
+        else:
+            runner.run_all_tasks(args.tasks_file)
         runner.generate_report(args.run_id)
 
 

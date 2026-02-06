@@ -1,78 +1,75 @@
 # Technology Stack
 
-**Analysis Date:** 2026-02-03
+**Analysis Date:** 2026-02-06
 
 ## Languages
 
 **Primary:**
-- Python 3.9+ - All application code, generated tools, bootstrapping, evaluation
-
-**Secondary:**
-- None
+- Python 3.9.6 - All application code, financial tools, evolution system
 
 ## Runtime
 
 **Environment:**
-- Python 3.13.11 (local development)
-- Python 3.9+ minimum required
+- Python 3.9.6
 
 **Package Manager:**
-- pip (Python package installer)
-- Lockfile: `fin_evo_agent/requirements.txt` (13 lines, locked versions)
+- pip (Python package manager)
+- Lockfile: `fin_evo_agent/requirements.txt` with pinned versions
 
 ## Frameworks
 
 **Core:**
-- SQLModel 0.0.14 - ORM for database models (5 tables)
-- SQLAlchemy >=2.0.0 - Database engine (SQLite)
+- SQLModel 0.0.14 - ORM for tool metadata storage
+- SQLAlchemy >=2.0.0 - Database engine underneath SQLModel
 - pandas >=2.0.0 - Data manipulation for financial calculations
 - numpy >=1.24.0 - Numerical computations
 
 **Testing:**
-- Built-in assert statements in generated tool code
-- Custom evaluation framework in `fin_evo_agent/benchmarks/run_eval.py`
-- No external test runner (pytest, unittest)
+- pytest - Unit testing framework (referenced in `tests/` directory and CI workflows)
 
 **Build/Dev:**
-- venv - Virtual environment isolation (`fin_evo_agent/.venv/`)
-- No build tools (pure Python, no compilation)
+- venv - Virtual environment isolation (`.venv/` directory)
+- GitHub Actions - CI/CD pipeline (`.github/workflows/benchmark.yml`)
 
 ## Key Dependencies
 
 **Critical:**
-- yfinance >=0.2.30 - Financial data fetching (Yahoo Finance API)
-- openai >=1.0.0 - LLM SDK for Qwen3 API (OpenAI-compatible interface)
-- pyarrow >=14.0.0 - Parquet serialization for data caching
+- `yfinance` >=0.2.30 - Financial data fetching from Yahoo Finance API
+- `openai` >=1.0.0 - LLM SDK for Qwen3 via DashScope OpenAI-compatible API
+- `sqlmodel` 0.0.14 - Data persistence layer for tool artifacts and execution traces
 
 **Infrastructure:**
-- tabulate - CLI output formatting
+- `pyarrow` >=14.0.0 - Parquet serialization for reproducible data caching
+- `PyYAML` >=6.0 - Configuration file parsing (`configs/constraints.yaml`, `benchmarks/config_matrix.yaml`)
+- `tabulate` - CLI table formatting for tool listings and benchmarks
 
 ## Configuration
 
 **Environment:**
-- Environment variables loaded from `fin_evo_agent/.env`
-- Key variable: `API_KEY` - Qwen3 API key via DashScope
-- Config module: `fin_evo_agent/src/config.py`
+- Environment variables loaded from `fin_evo_agent/.env` (file present but not read per security policy)
+- Key environment variable: `API_KEY` for Qwen3 LLM access via DashScope
+- Fallback: Mock LLM responses if `API_KEY` not set
+- Configuration centralized in `fin_evo_agent/src/config.py`
 
 **Build:**
-- No build configuration (interpreted Python)
-- Virtual environment managed via `python -m venv .venv`
+- `fin_evo_agent/requirements.txt` - Locked dependency versions
+- `fin_evo_agent/configs/constraints.yaml` - Centralized runtime constraints
+- `fin_evo_agent/benchmarks/config_matrix.yaml` - Benchmark configuration matrix
+- `.github/workflows/benchmark.yml` - CI pipeline configuration
 
 ## Platform Requirements
 
 **Development:**
-- Python 3.9+ runtime
-- Virtual environment: `fin_evo_agent/.venv/`
-- SQLite 3.x (included with Python)
-- Network access for yfinance API (first run only)
-- DashScope API access (optional - falls back to mock LLM)
+- Python 3.9+ (tested with 3.9.6, CI uses 3.11)
+- Virtual environment recommended: `python -m venv .venv`
+- Installation: `pip install -r fin_evo_agent/requirements.txt`
+- Optional: DashScope API key for LLM functionality
 
 **Production:**
-- Deployment target: Local/self-hosted
-- No containerization detected (Docker, Kubernetes)
-- No cloud platform dependencies
-- Designed for reproducibility: Parquet cache enables offline execution
+- GitHub Actions (ubuntu-latest runners)
+- Deployment target: SQLite file-based database, local filesystem for generated tools
+- No external hosting - self-contained system
 
 ---
 
-*Stack analysis: 2026-02-03*
+*Stack analysis: 2026-02-06*

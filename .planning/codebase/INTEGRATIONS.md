@@ -1,91 +1,101 @@
 # External Integrations
 
-**Analysis Date:** 2026-02-03
+**Analysis Date:** 2026-02-06
 
 ## APIs & External Services
 
-**Financial Data:**
-- yfinance (Yahoo Finance) - Stock/ETF/index historical data
-  - SDK/Client: `yfinance >=0.2.30`
-  - Auth: None required (public API)
-  - Usage: `fin_evo_agent/src/finance/data_proxy.py`
-  - Caching: Parquet snapshots in `fin_evo_agent/data/cache/` (MD5-keyed)
-  - Retry: 3 attempts with exponential backoff (1-10s delay)
-
-**LLM Provider:**
-- Qwen3 via DashScope - Tool code generation, error analysis
-  - SDK/Client: `openai >=1.0.0` (OpenAI-compatible API)
-  - Auth: `API_KEY` environment variable
+**LLM Service:**
+- Qwen3-Max (Alibaba DashScope) - Code generation and error analysis
+  - SDK/Client: `openai` package (OpenAI-compatible API)
   - Base URL: `https://dashscope.aliyuncs.com/compatible-mode/v1`
   - Model: `qwen3-max-2026-01-23`
-  - Thinking mode: Enabled via `extra_body={"enable_thinking": True}`
-  - Fallback: Mock LLM responses if no API key
-  - Usage: `fin_evo_agent/src/core/llm_adapter.py`
+  - Auth: `API_KEY` environment variable
+  - Features: Thinking mode enabled (`extra_body={"enable_thinking": True}`)
+  - Timeout: 180 seconds (configurable via `LLM_TIMEOUT` env var)
+  - Implementation: `fin_evo_agent/src/core/llm_adapter.py`
+
+**Financial Data:**
+- Yahoo Finance (yfinance) - Historical stock data, OHLCV, financial statements
+  - SDK/Client: `yfinance` package
+  - Auth: None (public API)
+  - Caching: Record-replay with Parquet snapshots (`fin_evo_agent/data/cache/`)
+  - Retry: Exponential backoff (3 attempts, 1-10s delay)
+  - Implementation: `fin_evo_agent/src/finance/data_proxy.py`, `fin_evo_agent/src/data/adapters/yfinance_adapter.py`
 
 ## Data Storage
 
 **Databases:**
 - SQLite
   - Connection: `sqlite:///fin_evo_agent/data/db/evolution.db`
-  - Client: SQLModel 0.0.14 (SQLAlchemy 2.0+ backend)
+  - Client: SQLModel/SQLAlchemy
   - Tables: `tool_artifacts`, `execution_traces`, `error_reports`, `tool_patches`, `batch_merge_records`
-  - Schema: `fin_evo_agent/src/core/models.py`
+  - Configuration: `fin_evo_agent/src/config.py` (`DB_URL`, `DB_PATH`)
 
 **File Storage:**
-- Local filesystem only
-  - Artifacts: `fin_evo_agent/data/artifacts/generated/*.py` - Generated tool code
-  - Bootstrap: `fin_evo_agent/data/artifacts/bootstrap/*.py` - Initial yfinance tools
-  - Cache: `fin_evo_agent/data/cache/*.parquet` - Parquet snapshots (Git ignored)
-  - Logs: `fin_evo_agent/data/logs/` - Thinking traces, security violations
+- Local filesystem
+  - Generated tools: `fin_evo_agent/data/artifacts/generated/` (Python files with naming: `{tool_name}_v{version}_{hash8}.py`)
+  - Bootstrap tools: `fin_evo_agent/data/artifacts/bootstrap/` (initial yfinance wrappers)
+  - Data cache: `fin_evo_agent/data/cache/` (Parquet files, Git ignored)
+  - Logs: `fin_evo_agent/data/logs/` (security violations, gateway attempts, evolution gates)
+  - Checkpoints: `fin_evo_agent/data/checkpoints/` (rollback points for verification gateway)
 
 **Caching:**
-- Custom Parquet-based caching (`@DataProvider.reproducible` decorator)
-  - Key: MD5(function_name + args + kwargs)
-  - Storage: `fin_evo_agent/data/cache/{hash}.parquet`
-  - Implementation: `fin_evo_agent/src/finance/data_proxy.py`
+- Parquet-based record-replay for yfinance API calls
+  - Cache key: MD5(function_name + args + kwargs)
+  - Storage: `fin_evo_agent/data/cache/{key}.parquet`
+  - First call: Fetch from network, save to cache
+  - Subsequent calls: Read from cache (no network)
 
 ## Authentication & Identity
 
 **Auth Provider:**
-- None (no user authentication)
-  - Single-user system
-  - API key stored in `.env` file
+- Custom environment variable
+  - Implementation: Manual `.env` file loading in `fin_evo_agent/src/config.py`
+  - Required variable: `API_KEY` for DashScope LLM access
+  - Optional variable: `LLM_TIMEOUT` for timeout override
 
 ## Monitoring & Observability
 
 **Error Tracking:**
-- Custom logging to files
+- Custom error logging system
   - Security violations: `fin_evo_agent/data/logs/security_violations.log`
-  - LLM thinking: `fin_evo_agent/data/logs/thinking_process/`
-  - ExecutionTrace model stores errors in SQLite
+  - Gateway attempts: `fin_evo_agent/data/logs/gateway_attempts.jsonl` (structured JSONL)
+  - Evolution gates: `fin_evo_agent/data/logs/evolution_gates.log`
+  - Implementation: `fin_evo_agent/src/core/gateway.py`, `fin_evo_agent/src/core/gates.py`
 
 **Logs:**
-- File-based logging (no external service)
-- ANSI-colored terminal output for evaluation runs
-- No structured logging framework (Sentry, Datadog)
+- File-based structured logging
+  - LLM thinking process: `fin_evo_agent/data/logs/` (when `LLM_ENABLE_THINKING=True`)
+  - Execution traces: Stored in SQLite `execution_traces` table
+  - Error reports: Stored in SQLite `error_reports` table with LLM-analyzed root causes
 
 ## CI/CD & Deployment
 
 **Hosting:**
-- Local development/execution only
-  - No deployment infrastructure detected
+- GitHub (source code repository)
+  - Repo pattern: Git-based codebase with local SQLite database
 
 **CI Pipeline:**
-- GitHub repository detected (`.git/`, `.github/`)
-  - No workflow files observed in exploration
-  - Manual evaluation via `python benchmarks/run_eval.py`
+- GitHub Actions
+  - Workflow: `.github/workflows/benchmark.yml`
+  - Triggers: PR to main branch, manual dispatch
+  - Secrets: `API_KEY` (repository secret for DashScope)
+  - Artifacts: Benchmark results JSON, downloadable artifacts
+  - Caching: yfinance data cache, pip dependencies
+  - Timeout: 120 minutes per workflow
+  - Python version: 3.11 (ubuntu-latest)
 
 ## Environment Configuration
 
 **Required env vars:**
-- `API_KEY` - Qwen3 API key (DashScope)
+- `API_KEY` - DashScope API key for Qwen3 LLM access (optional, falls back to mock)
 
 **Optional env vars:**
-- None detected
+- `LLM_TIMEOUT` - Override default 180s timeout for LLM requests
 
 **Secrets location:**
-- `.env` file in `fin_evo_agent/.env`
-- ⚠️ WARNING: `.env` file contains plaintext API key (should not be committed)
+- Local development: `fin_evo_agent/.env` file (Git ignored)
+- GitHub Actions: Repository secrets (Settings → Secrets and variables → Actions)
 
 ## Webhooks & Callbacks
 
@@ -93,30 +103,8 @@
 - None
 
 **Outgoing:**
-- None
-
-## Security Mechanisms
-
-**Sandbox Execution:**
-- subprocess isolation with 30s timeout
-  - Implementation: `fin_evo_agent/src/core/executor.py`
-  - Method: `subprocess.run()` with timeout
-  - Memory limit: 512MB (configured, not enforced)
-
-**AST Security Analysis:**
-- Capability-based module whitelisting
-  - Capability definitions: `fin_evo_agent/src/core/capabilities.py`
-  - Always banned modules: `os`, `sys`, `subprocess`, `shutil`, `socket`, `pickle`
-  - Always banned calls: `eval`, `exec`, `compile`, `__import__`
-  - Category-specific rules:
-    - `fetch` tools: Can import yfinance, hashlib, pathlib
-    - `calculation` tools: Cannot import yfinance (blocked)
-    - `composite` tools: Calculation capabilities only
-
-**Network Isolation:**
-- yfinance access only (no raw HTTP/socket libraries)
-- Retry decorator handles network failures transparently
+- None (yfinance and DashScope APIs use HTTP request-response pattern only)
 
 ---
 
-*Integration audit: 2026-02-03*
+*Integration audit: 2026-02-06*

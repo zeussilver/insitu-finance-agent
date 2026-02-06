@@ -1,224 +1,184 @@
 # Codebase Concerns
 
-**Analysis Date:** 2026-02-03
+**Analysis Date:** 2026-02-06
 
 ## Tech Debt
 
-**Merger Module - Unimplemented Stub:**
-- Issue: `src/evolution/merger.py` is documented as "stub for Phase 1b" but file does not exist
-- Files: Module missing entirely, referenced in `src/core/models.py` (BatchMergeRecord table)
-- Impact: Cannot consolidate similar tools, registry bloat with duplicate tools, no tool generalization
-- Fix approach: Implement batch merger with LLM-based consolidation, regression testing against consolidated tools
+**Contract Information Loss in LLM Generation**
+- Issue: Contract requirements (output types, constraints) are not passed to LLM during tool code generation, causing LLM to generate wrong output types (e.g., DataFrame when numeric expected)
+- Files: `fin_evo_agent/src/core/llm_adapter.py:321-455`, `fin_evo_agent/src/evolution/synthesizer.py:155`
+- Impact: 15% failure rate (3/20 tasks) from CONTRACT_VALID stage failures; LLM generates code returning DataFrame/dict when contract expects single numeric value
+- Fix approach: Add `contract` parameter to `generate_tool_code()` and inject contract requirements into LLM user prompt (lines documented in `problem_analyse.md:192-232`)
 
-**Incomplete Multi-Stage Verification Rollout:**
-- Issue: Verifier pipeline exists but not all code paths use it consistently
-- Files: `src/core/verifier.py` (complete), `src/evolution/synthesizer.py` (uses verifier), `src/evolution/refiner.py` (may bypass stages)
-- Impact: Tools may pass through refiner without full contract validation, inconsistent quality guarantees
-- Fix approach: Ensure refiner also calls MultiStageVerifier.verify_all_stages() after patching
+**Contract-Blind Refiner Loop**
+- Issue: Refiner's `generate_patch()` method doesn't receive contract information, so it cannot guide LLM to fix output type mismatches
+- Files: `fin_evo_agent/src/evolution/refiner.py:220-282`
+- Impact: Refiner exhausts max attempts (2-3) without fixing root cause; LLM "fixes" by changing test assertions instead of fixing return type
+- Fix approach: Add `contract` parameter to `generate_patch()` and inject contract requirements into refinement prompt (lines documented in `problem_analyse.md:234-309`)
 
-**Task Executor Symbol Extraction Brittleness:**
-- Issue: Symbol extraction uses keyword exclusion list that may miss false positives
-- Files: `src/core/task_executor.py` lines 67-73 (SYMBOL_EXCLUSIONS hardcoded list)
-- Impact: Common words like "NET" excluded from matching, may break on edge cases like "NET" ticker
-- Fix approach: Use NER model or yfinance symbol validation API instead of regex + exclusion list
+**Missing Contract-Aware Self-Tests**
+- Issue: Generated self-tests use arbitrary assertions (e.g., `assert ni_aapl > 0`) that don't validate contract requirements like output type
+- Files: Generated code in `fin_evo_agent/data/artifacts/generated/*.py`, system prompts in `fin_evo_agent/src/core/llm_adapter.py:24-229`
+- Impact: Tools pass SELF_TEST stage but fail CONTRACT_VALID stage; smoke tests don't catch type mismatches
+- Fix approach: Add contract-specific test guidance to system prompts (e.g., "For NUMERIC outputs: assert isinstance(result, float)")
 
-**Category Inference Heuristics:**
-- Issue: Task category inferred from keyword matching, not semantic analysis
-- Files: `src/evolution/synthesizer.py` lines 264-275 (_infer_category method), `src/core/llm_adapter.py` lines 325-337
-- Impact: Misclassification leads to wrong prompt + wrong capability rules, synthesis failures
-- Fix approach: Add explicit category field to benchmark tasks, use LLM classification for user queries
-
-**Database Migration - Manual Column Addition:**
-- Issue: Schema evolution uses raw SQL ALTER TABLE instead of proper migration framework
-- Files: `src/core/models.py` lines 168-198 (_migrate_tool_artifacts function)
-- Impact: No rollback capability, fragile across SQLite versions, risk of data loss on migration errors
-- Fix approach: Use Alembic for proper schema migrations with version tracking
+**Stub Implementation: Batch Merger**
+- Issue: `fin_evo_agent/src/evolution/merger.py` is a stub placeholder (Phase 1b feature deferred)
+- Files: `fin_evo_agent/src/evolution/merger.py`
+- Impact: Cannot consolidate similar tools into optimized versions; tool library grows without deduplication
+- Fix approach: Implement semantic similarity detection + LLM-guided merging (per Yunjue paper Section 3.4)
 
 ## Known Bugs
 
-**Executor Runner Code Injection Risk:**
-- Symptoms: Generated runner script uses f-string interpolation of function name and paths
-- Files: `src/core/executor.py` lines 245-300 (runner_code template uses eval())
-- Trigger: Any function name with special characters or quotes could break sandbox
-- Workaround: Static check prevents most dangerous code, but runner itself uses eval() on line 274
+**API Connection Timeouts in CI/Local Divergence**
+- Symptoms: Local benchmarks achieve 85% (17/20) pass rate, but CI shows 35% (7/20) with 12 TaskTimeout errors
+- Files: `fin_evo_agent/benchmarks/results/post_contract_fix2.json` (CI), `fin_evo_agent/benchmarks/results/post_round3_fix.json` (local)
+- Trigger: DashScope API connection errors in CI environment; timeout_per_task_sec=300 not sufficient for LLM thinking mode with retries
+- Workaround: Increase CI timeout to 120 minutes (`.github/workflows/benchmark.yml:38`), set LLM_TIMEOUT=90 env var
 
-**Simple Fetch Fallthrough Ambiguity:**
-- Symptoms: Financial queries (net income, revenue) now fall through to tool execution instead of direct handling
-- Files: `src/core/task_executor.py` lines 299-302 (changed behavior)
-- Trigger: Query "Get AAPL 2023 Q1 net income" returns None, expected to invoke tool
-- Workaround: Works as intended after architecture overhaul, but comment indicates previous behavior was ValueError
+**SELF_TEST Failures from urllib3 Warning**
+- Symptoms: Self-tests fail with truncated error message containing urllib3 OpenSSL warning; actual test logic never runs
+- Files: `fin_evo_agent/data/logs/gateway_attempts.jsonl:28,36,44,48` show repeated pattern
+- Trigger: urllib3 v2 emits NotOpenSSLWarning when compiled with LibreSSL; warning text truncated in error message at 100 chars
+- Workaround: Allow `warnings` module in fetch tools (already fixed in `fin_evo_agent/configs/constraints.yaml:42`)
 
-**Verification Report JSON Serialization:**
-- Symptoms: VerificationStage enum values not JSON-serializable in some contexts
-- Files: `src/core/verifier.py` line 73 (final_stage.value), line 77 (stage.value)
-- Trigger: Saving VerificationReport.to_dict() to ExecutionTrace.std_out fails if trace saved to JSON
-- Workaround: Use .value property consistently, but some code paths may miss conversion
+**Security Check Blocking Reflection Calls**
+- Symptoms: LLM-generated code uses `getattr`, `hasattr` for dynamic attribute access; AST security check blocks these as banned calls
+- Files: `fin_evo_agent/data/logs/gateway_attempts.jsonl:6,12,38`, `fin_evo_agent/src/core/executor.py:51-57`
+- Trigger: LLM generates code like `getattr(ticker, 'info', {})` for defensive programming; banned_calls set includes getattr/hasattr
+- Workaround: None currently; refiner cannot fix AST_SECURITY failures (unfixable error class)
 
 ## Security Considerations
 
-**Subprocess Runner Uses eval():**
-- Risk: Even after AST check passes, runner.py uses eval(func_name) to get function reference
-- Files: `src/core/executor.py` lines 274, 280 (eval calls in generated runner)
-- Current mitigation: AST check blocks dangerous names, subprocess isolation limits blast radius
-- Recommendations: Replace eval() with explicit function lookup via globals() dict traversal, add function name allowlist
+**Evolution Gate Default Mode: Dev (Permissive)**
+- Risk: Evolution gates run in `dev` mode which auto-approves APPROVAL-tier actions without human review
+- Files: `fin_evo_agent/configs/constraints.yaml:144`, `fin_evo_agent/src/core/gates.py:239`
+- Current mitigation: Warning logged to console when auto-approving APPROVAL actions
+- Recommendations: Switch to `prod` mode before production deployment; implement webhook notification for APPROVAL-tier requests
 
-**Security Violation Logging - No Alerting:**
-- Risk: Security violations logged to file but no real-time alerting or circuit breaker
-- Files: `src/core/executor.py` lines 80-93 (_log_security_violation), `fin_evo_agent/data/logs/security_violations.log`
-- Current mitigation: Logs to stderr and file, but no monitoring integration
-- Recommendations: Add webhook/email alerting for security violations, rate limiting after N violations
+**Capability-Based Security Depends on LLM Compliance**
+- Risk: Security model assumes LLM will not intentionally generate malicious code; AST analysis blocks after generation
+- Files: `fin_evo_agent/src/core/executor.py:93-183`, `fin_evo_agent/configs/constraints.yaml:66-136`
+- Current mitigation: Multi-layer defense: (1) LLM system prompts forbid banned modules, (2) AST static analysis blocks violations, (3) subprocess sandbox isolates execution
+- Recommendations: Add input validation for task queries (reject queries containing "os.system", "subprocess", etc.)
 
-**LLM Mock Mode Bypasses Real Security:**
-- Risk: Mock LLM responses hardcoded, may not represent real LLM attack patterns
-- Files: `src/core/llm_adapter.py` lines 379-525 (_mock_generate method)
-- Current mitigation: Only used when API_KEY not set (testing mode)
-- Recommendations: Add adversarial LLM test cases to security_tasks.jsonl, test with real LLM
-
-**Cache Poisoning Risk:**
-- Risk: Parquet cache keys use MD5 hash without signature validation
-- Files: `src/finance/data_proxy.py` lines 88-96 (_get_cache_path using MD5)
-- Current mitigation: Cache directory not web-accessible, local filesystem only
-- Recommendations: Add cache integrity verification (HMAC signatures), cache expiration policy
+**Subprocess Execution Uses Temp Files**
+- Risk: Generated code executed via subprocess with tempfile.NamedTemporaryFile; potential race condition if attacker can predict temp file path
+- Files: `fin_evo_agent/src/core/executor.py:234-293`
+- Current mitigation: Python's tempfile uses secure random naming; 30-second timeout limits exposure window
+- Recommendations: Use `delete=True` parameter (already implemented); consider switching to in-memory execution via RestrictedPython
 
 ## Performance Bottlenecks
 
-**Network Retry - Sequential Blocking:**
-- Problem: Network retries use synchronous sleep, blocking entire eval runner
-- Files: `src/finance/data_proxy.py` lines 40-81 (with_retry decorator), `src/core/verifier.py` lines 303-324 (integration test retry)
-- Cause: time.sleep() blocks thread for exponential backoff (1-10 seconds)
-- Improvement path: Use async/await pattern for concurrent task execution, or thread pool for parallel retries
+**Sequential LLM Calls in Refiner Loop**
+- Problem: Refiner makes up to 2-3 sequential LLM calls per failed tool (analyze_error removed in recent optimization, but patch generation still synchronous)
+- Files: `fin_evo_agent/src/evolution/refiner.py:284-432`
+- Cause: Each refinement attempt waits for LLM response (2-10 seconds per call) before next attempt
+- Improvement path: Batch multiple refinement attempts into single LLM call with ranked alternatives; parallel execution if using multiple fallback LLMs
 
-**Verifier Sample Data Generation - Repeated Computation:**
-- Problem: Contract test args generated fresh for every verification, same sample data used
-- Files: `src/core/verifier.py` lines 352-417 (_generate_test_args method)
-- Cause: Hardcoded sample price lists recreated on each call (80 lines of data)
-- Improvement path: Cache sample data as module-level constants, reduce redundant list allocations
+**Contract Validation Re-Executes Code**
+- Problem: Multi-stage verifier executes tool code twice: once for SELF_TEST, again for CONTRACT_VALID with same test data
+- Files: `fin_evo_agent/src/core/verifier.py:122-150`
+- Cause: Stages are independent; output from SELF_TEST not cached for CONTRACT_VALID reuse
+- Improvement path: Cache execution result from SELF_TEST stage and reuse for contract validation
 
-**Task Executor Data Fetch - No Batch Prefetch:**
-- Problem: Each task fetches OHLCV data sequentially, even if symbol + date range identical
-- Files: `src/core/task_executor.py` lines 169-208 (fetch_stock_data), `benchmarks/run_eval.py` lines 703-736 (run_all_tasks)
-- Cause: No cross-task data sharing, cache helps but initial fetch still sequential
-- Improvement path: Prefetch all unique (symbol, start, end) tuples before eval loop, warm cache in parallel
-
-**Large Code Content in Database:**
-- Problem: Full source code stored in both DB (code_content TEXT) and disk (file_path)
-- Files: `src/core/models.py` line 63 (code_content redundant with file_path), `src/core/registry.py` (reads from both)
-- Cause: "Metadata in DB, Payload on Disk" architecture not fully enforced
-- Improvement path: Remove code_content column, always read from file_path, reduces DB size from 92KB growth per tool
+**yfinance Network Calls Without Circuit Breaker**
+- Problem: Bootstrap tools make yfinance API calls with retry (3 attempts, exponential backoff) but no circuit breaker
+- Files: `fin_evo_agent/src/finance/data_proxy.py:71-95`, retry decorator at lines 46-68
+- Cause: If yfinance API is down, every tool waits for 1+2+4=7 seconds before failing
+- Improvement path: Implement circuit breaker pattern (after N consecutive failures, skip retries for X seconds)
 
 ## Fragile Areas
 
-**LLM Response Protocol Parsing:**
-- Files: `src/core/llm_adapter.py` lines 265-296 (_clean_protocol method)
-- Why fragile: Regex patterns for `<think>...</think>` and ` ```python...``` ` tags
-- Safe modification: Use AST parsing for code extraction instead of regex, validate thinking tags with XML parser
-- Test coverage: Only manual test in __main__ block (lines 528-554), no unit tests
+**Symbol Extraction from Natural Language Queries**
+- Files: `fin_evo_agent/src/core/task_executor.py:123-169`
+- Why fragile: Heuristic-based extraction using regex + exclusion lists; ambiguous queries like "NET profit" could extract "NET" as symbol
+- Safe modification: Add new symbols to US_TICKERS (line 117) or INDEX_SYMBOL_MAPPING (line 76); do NOT modify SYMBOL_EXCLUSIONS without testing
+- Test coverage: No unit tests for extract_symbol(); failures only caught in integration tests
 
-**Thinking Process Extraction:**
-- Files: `src/core/llm_adapter.py` lines 282-283 (extract thinking), synthesizer uses it for logging
-- Why fragile: Thinking tags optional, missing tags cause empty thought_trace but no error
-- Safe modification: Add schema validation for LLM responses, warn if thinking tags missing
-- Test coverage: No tests for missing thinking tags
+**Multi-Stage Verifier Stage Dependencies**
+- Files: `fin_evo_agent/src/core/verifier.py:97-167`
+- Why fragile: Verification stages run sequentially with early termination; adding new stage requires careful ordering
+- Safe modification: New stages must be inserted at correct position (e.g., security must run before execution); update VerificationStage enum values carefully
+- Test coverage: Unit tests in `tests/core/test_verifier.py` cover happy path; edge cases (skip logic) not fully tested
 
-**Synthesizer Schema Extraction:**
-- Files: `src/evolution/synthesizer.py` lines 69-95 (extract_args_schema using regex)
-- Why fragile: Simple regex for function signature, doesn't handle multi-line signatures or complex type hints
-- Safe modification: Use ast.parse() to properly extract function arguments and types
-- Test coverage: Comment on line 71 says "in production, use ast.parse" but not implemented
-
-**Evaluation Runner Task Classification:**
-- Files: `benchmarks/run_eval.py` lines 242-290 (_classify_result method)
-- Why fragile: 48 lines of nested if/else to distinguish PASS/FAIL/ERROR from stderr strings
-- Safe modification: Refactor into state machine or use explicit result codes from executor
-- Test coverage: No unit tests, only tested via full eval runs
+**Contract Inference from Query Text**
+- Files: `fin_evo_agent/src/core/contracts.py:233-296`
+- Why fragile: Keyword matching on query text (e.g., "RSI" → calc_rsi contract); ambiguous queries may infer wrong contract
+- Safe modification: Add new keywords to existing contract patterns; avoid overlapping keywords between contracts
+- Test coverage: Golden test coverage in `tests/extraction/test_schema.py`; 95% accuracy gate enforced
 
 ## Scaling Limits
 
-**Single-Threaded Evaluation Runner:**
-- Current capacity: ~20 tasks sequentially, 2-5 minutes total runtime (based on benchmarks/results/)
-- Limit: Cannot scale beyond single process, limited by GIL and sequential execution
-- Scaling path: Multiprocessing pool for parallel task execution, shared cache via file system
+**SQLite Database Concurrent Writes**
+- Current capacity: Single-writer model; SQLite handles ~1000 writes/sec but blocks on concurrent writes
+- Limit: Multi-process tool synthesis would hit write lock contention
+- Scaling path: Migrate to PostgreSQL for concurrent tool registration; or implement write queue with background worker
 
-**SQLite Database Contention:**
-- Current capacity: 92KB database handles single-user workflow
-- Limit: SQLite write locks prevent concurrent tool synthesis, max ~10k tools before performance degradation
-- Scaling path: Migrate to PostgreSQL for multi-user scenarios, add connection pooling
+**Tool Registry Linear Search by Name**
+- Current capacity: Registry queries use `SELECT * FROM tool_artifacts WHERE name = ?` without index on name field
+- Limit: With 1000+ tools, lookup becomes O(n); currently ~10 tools so negligible
+- Scaling path: Add database index on (name, status) columns; or implement in-memory LRU cache for hot tools
 
-**yfinance Rate Limiting:**
-- Current capacity: Retry decorator handles transient failures, cache prevents repeat fetches
-- Limit: Yahoo Finance has undocumented rate limits (~2000 requests/hour/IP)
-- Scaling path: Add rate limiting client-side (token bucket), rotate API endpoints, cache warming strategy
-
-**Generated Tool File Count:**
-- Current capacity: All tools in single directory `data/artifacts/generated/`
-- Limit: Filesystem performance degrades with >10k files in single directory (ext4/APFS)
-- Scaling path: Shard by hash prefix (e.g., `generated/a/b/calc_rsi_v0.1.0_ab123456.py`), or use content-addressed storage
+**LLM API Rate Limits**
+- Current capacity: DashScope Qwen3-max has rate limits (exact limits not documented in codebase)
+- Limit: Benchmark run generates 20-60 LLM calls (1 per task, 2-3 refinements); hitting rate limit causes cascading failures
+- Scaling path: Implement exponential backoff on 429 errors; distribute across multiple API keys; or add local LLM fallback
 
 ## Dependencies at Risk
 
-**yfinance - Unofficial API Dependency:**
-- Risk: Relies on undocumented Yahoo Finance endpoints, subject to breaking changes
-- Impact: All fetch tools break if Yahoo changes API, entire fetch category fails
-- Migration plan: Abstract DataProvider interface, add alternative backends (Alpha Vantage, Polygon.io, IEX Cloud)
+**yfinance Unofficial Library**
+- Risk: yfinance is community-maintained, not official Yahoo API; breaking changes or deprecation possible
+- Impact: All fetch tools and bootstrap tools depend on yfinance; breakage would fail 40% of tasks (8/20 fetch tasks)
+- Migration plan: Abstract data source behind DataProvider protocol (already implemented in `fin_evo_agent/src/data/interfaces.py`); swap to Alpha Vantage or Polygon.io adapters
 
-**Qwen3 Model Deprecation:**
-- Risk: Model ID `qwen3-max-2026-01-23` may be deprecated or replaced
-- Impact: LLM adapter breaks, no tool synthesis possible, falls back to mock mode
-- Migration plan: Add model version config, support multiple model IDs with fallback chain
+**OpenAI Client for DashScope API**
+- Risk: Using OpenAI Python client for DashScope OpenAI-compatible endpoint; API compatibility not guaranteed
+- Impact: LLM calls would fail completely; system falls back to mock LLM (returns placeholder code)
+- Migration plan: Switch to DashScope native SDK; or implement LLM adapter abstraction with multiple backends
 
-**SQLModel + SQLAlchemy Version Coupling:**
-- Risk: SQLModel 0.x uses SQLAlchemy 2.x, API not stable
-- Impact: Migrations break, raw SQL in _migrate_tool_artifacts may fail
-- Migration plan: Pin exact versions in requirements.txt (already done), plan migration to Alembic
+**Python 3.9 Compatibility**
+- Risk: Codebase uses Python 3.9 features (dict merge `|`, type hints); some dependencies require >=3.10
+- Impact: CI uses Python 3.11 (`.github/workflows/benchmark.yml:47`); local dev may use 3.9; version skew possible
+- Migration plan: Pin minimum Python version to 3.10 in `requirements.txt`; update CI matrix to test 3.10-3.12
 
 ## Missing Critical Features
 
-**No Refiner Integration in Synthesizer Default Path:**
-- Problem: synthesize() method exists but doesn't use refiner, only synthesize_with_refine() does
-- Blocks: Most direct API calls bypass error correction, lower success rate
-- Priority: Medium (workaround: callers use synthesize_with_refine explicitly)
+**No Rollback Mechanism for Failed Registrations**
+- Problem: VerificationGateway creates checkpoints but doesn't expose rollback UI/API
+- Blocks: Cannot recover from bad tool registrations; database grows with failed attempts (12% failure rate)
+- Priority: Medium - manual SQLite query can delete failed tools
 
-**No Tool Versioning for Breaking Changes:**
-- Problem: semantic_version exists but not incremented on patches, always "0.1.0"
-- Blocks: Cannot track tool evolution, no deprecation strategy, breaking changes invisible
-- Priority: High (needed for Phase 1b merger, tool consolidation requires version comparison)
+**No Tool Versioning or Deprecation**
+- Problem: Tools use semantic versioning (v0.1.0) but no upgrade/deprecation mechanism
+- Blocks: Cannot mark old tool versions as obsolete; registry accumulates duplicate tools with different versions
+- Priority: Low - Phase 1 focuses on generation, not maintenance
 
-**No Contract Validation in Refiner:**
-- Problem: Refiner patches code but doesn't re-run contract validation stage
-- Blocks: Refined tools may pass self-test but violate output contracts
-- Priority: High (affects correctness, refined tools may produce wrong result format)
-
-**No Comprehensive Error Taxonomy:**
-- Problem: Error types ad-hoc strings, no standardized classification
-- Blocks: Cannot analyze error patterns, refiner can't specialize by error type
-- Priority: Medium (needed for intelligent retry strategies, error-specific fixes)
+**No Human-in-the-Loop for APPROVAL Gate**
+- Problem: APPROVAL-tier actions (persist to library, modify rules) should require human approval but currently auto-approved in dev mode
+- Blocks: Cannot safely enable tool library persistence without risk of polluting shared library
+- Priority: High - required for production deployment
 
 ## Test Coverage Gaps
 
-**No Unit Tests for Core Modules:**
-- What's not tested: All src/core/*.py modules have __main__ blocks but no pytest tests
-- Files: `src/core/verifier.py`, `src/core/executor.py`, `src/core/task_executor.py`, `src/core/llm_adapter.py`
-- Risk: Refactoring breaks functionality silently, regression detection depends on full eval runs
-- Priority: High (10+ minute eval runs for testing small changes)
+**Integration Test Coverage: 0%**
+- What's not tested: End-to-end task execution flow (synthesizer → gateway → verifier → executor → refiner)
+- Files: No integration tests exist; only unit tests in `tests/core/`, `tests/evolution/`
+- Risk: Regressions in multi-component interactions not caught until benchmark run (expensive)
+- Priority: High - add smoke test that runs one fetch task + one calc task
 
-**No Integration Tests for Error Paths:**
-- What's not tested: Network failures, LLM API timeouts, corrupt cache files
-- Files: `src/finance/data_proxy.py` (retry logic), `src/core/verifier.py` (network retry in integration stage)
-- Risk: Error handling untested, may crash instead of graceful degradation
-- Priority: Medium (production use requires error resilience)
+**Error Path Coverage: ~30%**
+- What's not tested: Refiner error classification edge cases (lines 111-177 in `refiner.py`); contract validation with missing/malformed output
+- Files: `tests/evolution/test_refiner.py` only tests happy path; `tests/core/test_gateway.py` missing error scenarios
+- Risk: Uncaught exceptions in error handling paths could crash synthesizer loop
+- Priority: Medium - add negative test cases for each error type
 
-**Security Tasks Coverage - Only 2 Samples:**
-- What's not tested: Most attack vectors (command injection, path traversal, code injection via string literals)
-- Files: `fin_evo_agent/data/logs/security_violations.log` shows only 2 violations recorded
-- Risk: False sense of security, real attackers may find bypasses
-- Priority: High (security critical, needs 20+ adversarial test cases)
-
-**No Contract Validation Tests:**
-- What's not tested: All 17 contracts in CONTRACTS dict lack dedicated test suites
-- Files: `src/core/contracts.py` defines 17 contracts but no tests for constraint validation
-- Risk: Contract validation logic may have bugs, tools may pass incorrectly
-- Priority: High (contract validation is core verification stage)
+**Security Violation Handling: Partial Coverage**
+- What's not tested: AST security check with nested banned calls (e.g., `lambda: eval()`); attribute access chains (e.g., `obj.__class__.__bases__`)
+- Files: `tests/core/test_executor.py` has basic security tests; advanced evasion techniques not tested
+- Risk: Sophisticated LLM-generated exploits might bypass AST analysis
+- Priority: Low - current coverage blocks obvious violations; advanced evasion unlikely from unmalicious LLM
 
 ---
 
-*Concerns audit: 2026-02-03*
+*Concerns audit: 2026-02-06*

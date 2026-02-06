@@ -1,0 +1,41 @@
+schema: spec-driven
+
+# Project context
+context: |
+  Tech stack: Python 3.11, SQLModel, yfinance
+  Conventions: conventional commits, kebab-case for change names
+  Domain: self-evolving financial agent system
+
+# PR Workflow Settings
+pr_workflow:
+  # Branch naming pattern for OpenSpec changes
+  branch_pattern: "openspec/{change-name}"
+
+  # Auto-create branch on /opsx:new --branch
+  auto_branch: true
+
+  # Gate thresholds reference (from fin_evo_agent/benchmarks/config_matrix.yaml)
+  gate_thresholds:
+    accuracy_regression: -0.02  # Max 2% regression allowed
+    gateway_coverage: 1.00      # 100% gateway coverage required
+    security_block_rate: 1.00   # 100% security blocks required
+
+  # Archive behavior
+  archive_on_merge: false  # Manual archive via /opsx:archive for now
+
+# Baseline reference
+baseline:
+  file: "fin_evo_agent/benchmarks/baselines/2026-02-04.json"
+  pass_rate: 0.85
+  passing_tasks: 17
+  total_tasks: 20
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+rules:
+  proposal:
+    - Keep proposals under 500 words
+    - Always include scope and rationale
+  tasks:
+    - Break tasks into atomic units
+    - Group related tasks into sections

@@ -1,275 +1,287 @@
 # Coding Conventions
 
-**Analysis Date:** 2026-02-03
+**Analysis Date:** 2026-02-06
 
 ## Naming Patterns
 
 **Files:**
-- Snake_case for modules: `llm_adapter.py`, `task_executor.py`, `data_proxy.py`
-- No file extensions except `.py`
-- Main entry point: `main.py`
-- Bootstrap code in `bootstrap.py`, generated code in `generated/`
+- snake_case for all Python files: `llm_adapter.py`, `task_executor.py`, `data_proxy.py`
+- Test files prefixed with `test_`: `test_executor.py`, `test_gateway.py`, `test_schema.py`
+- `__init__.py` in every package directory for explicit imports
+- UPPERCASE for markdown docs in root: `CLAUDE.md`, `README.md`
 
 **Functions:**
-- Snake_case: `get_stock_hist()`, `calc_rsi()`, `extract_function_name()`
-- Prefix conventions:
-  - `get_` for data fetching: `get_stock_hist()`, `get_financial_info()`
-  - `calc_` for calculations: `calc_rsi()`, `calc_ma()`, `calc_bollinger()`
-  - `check_` for boolean conditions: `check_trading_signal()`
-  - `extract_` for parsing: `extract_function_name()`, `extract_indicator()`
-  - `_validate_` for validation helpers: `_validate_numeric()`, `_validate_dict()`
-  - Private methods with single underscore: `_clean_protocol()`, `_infer_category()`
+- snake_case for all functions: `extract_function_name()`, `static_check()`, `get_constraints()`
+- Private functions prefixed with underscore: `_normalize_encoding()`, `_log_security_violation()`, `_parse()`
+- Verbs for actions: `extract_`, `get_`, `load_`, `create_`, `validate_`
 
 **Variables:**
-- Snake_case: `tool_name`, `func_name`, `exit_code`, `std_err`
-- Constants in UPPERCASE: `BANNED_MODULES`, `ALLOWED_MODULES`, `RETRY_MAX_ATTEMPTS`
-- Boolean flags with `is_`/`has_` prefix: `is_safe`, `has_error`
+- snake_case for local variables: `task_id`, `func_name`, `code_content`
+- SCREAMING_SNAKE_CASE for module-level constants: `BANNED_MODULES`, `ALLOWED_MODULES`, `LLM_TIMEOUT`
+- Descriptive names over abbreviations: `verification_stage` not `ver_stage`
 
 **Classes:**
-- PascalCase: `ToolExecutor`, `LLMAdapter`, `Synthesizer`, `MultiStageVerifier`
-- Descriptive noun phrases: `ToolArtifact`, `ExecutionTrace`, `ErrorReport`
-- Enums also use PascalCase: `ToolStatus`, `Permission`, `VerificationStage`
+- PascalCase for class names: `ToolArtifact`, `VerificationGateway`, `ExecutionTrace`
+- Noun-based names describing entities: `Synthesizer`, `Refiner`, `ToolExecutor`
+- Exception suffix for custom exceptions: `SecurityException`, `VerificationError`
 
 **Types:**
-- Enums inherit from `str, Enum` pattern for JSON serialization
-- Example: `class ToolStatus(str, Enum):`
-- TypeVar usage: `T = TypeVar('T')`
+- PascalCase for Enums: `ToolStatus`, `Permission`, `VerificationStage`
+- SCREAMING_SNAKE_CASE for enum values: `CALC_ONLY`, `NETWORK_READ`, `AST_SECURITY`
 
 ## Code Style
 
 **Formatting:**
-- No automated formatter detected (no `.prettierrc`, `.black`, or `pyproject.toml`)
-- Manual style conventions observed:
-  - 4-space indentation
-  - Maximum line length ~100-120 characters (not enforced)
-  - Blank line between class methods
-  - Two blank lines between top-level definitions
+- No explicit formatter configured (no .prettierrc, .black, etc.)
+- Manual PEP 8 compliance observed
+- 4-space indentation consistently used
+- Line length: Generally kept under 100 characters, docstrings under 80
 
 **Linting:**
-- No linter configuration files detected (no `.pylintrc`, `.flake8`, `pyproject.toml`)
-- Style enforced through code review
-
-**Docstrings:**
-- Google-style docstrings used consistently
-- Triple-quoted strings with `"""`
-- Format:
-  ```python
-  def function_name(arg1: type, arg2: type) -> return_type:
-      """Brief description.
-
-      Args:
-          arg1: Description
-          arg2: Description
-
-      Returns:
-          Description of return value
-      """
-  ```
-- Module-level docstrings in all files
-- Class docstrings describe purpose and responsibilities
+- No linter config files detected (.pylintrc, .flake8, pyproject.toml absent)
+- Code shows manual adherence to PEP 8 standards
+- Type hints used extensively throughout
 
 ## Import Organization
 
 **Order:**
-1. Standard library imports (grouped)
-2. Third-party imports (pandas, numpy, yfinance, sqlmodel)
-3. Local imports with sys.path manipulation
-4. Example from `src/core/executor.py`:
-   ```python
-   import ast
-   import json
-   import subprocess
-   import sys
-   import tempfile
+1. Standard library imports (grouped, no blank line between)
+2. Blank line
+3. Third-party imports (openai, sqlmodel, pandas, etc.)
+4. Blank line
+5. Local imports with conditional TYPE_CHECKING for circular dependency avoidance
+6. Path manipulation via `sys.path.insert(0, ...)` for project root
 
-   import sys as _sys
-   _sys.path.insert(0, str(__file__).rsplit("/", 3)[0])
-   from src.config import EXECUTION_TIMEOUT_SEC
-   from src.core.models import ExecutionTrace
-   ```
+**Example pattern from `src/core/gateway.py`:**
+```python
+import json
+import logging
+from datetime import datetime
+from pathlib import Path
+from typing import Tuple, Optional, Dict, Any
+
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from src.core.verifier import MultiStageVerifier
+from src.core.registry import ToolRegistry
+from src.core.models import ToolArtifact
+```
 
 **Path Aliases:**
 - No path aliases configured
-- Uses dynamic path insertion: `sys.path.insert(0, str(__file__).rsplit("/", 3)[0])`
-- All imports use absolute paths from project root: `from src.config import ...`
+- All imports use explicit `src.` prefix: `from src.core.models import ...`
+- Relative imports avoided in favor of absolute imports from project root
 
-**Import Style:**
-- Explicit imports preferred: `from src.core.models import ToolArtifact, ExecutionTrace`
-- Module imports when many symbols: `import pandas as pd`, `import numpy as np`
-- Avoid wildcard imports (no `from module import *` observed)
+## Type Hints
+
+**Usage:**
+- Comprehensive type hints on all public functions
+- Function signatures include parameter types and return types
+- Example: `def submit(code: str, category: str, contract: Optional[ToolContract] = None) -> Tuple[bool, Optional[ToolArtifact], VerificationReport]`
+- `TYPE_CHECKING` conditional imports to avoid circular dependencies
+- Protocol types used for interfaces: `class DataProvider(Protocol):`
+
+**Collections:**
+- `List[str]`, `Dict[str, Any]`, `Set[str]`, `Tuple[bool, str]` from typing module
+- `Optional[T]` for nullable types, never bare `None`
 
 ## Error Handling
 
 **Patterns:**
-- Try-except blocks with specific exception types
-- Return values over exceptions for expected failures:
-  - `None` for data not found
-  - Empty DataFrame for failed queries
-  - Tuple of `(is_safe, error_message)` for validation
-- Custom exceptions for security: `class SecurityException(Exception):`
-- Execution results use structured traces rather than raising exceptions
+- Custom exceptions for domain errors: `SecurityException`, `VerificationError`
+- Exception classes include optional context data: `VerificationError.__init__(message, report)`
+- Try-except blocks with specific exception types, not bare `except:`
+- Graceful degradation: functions return `(success: bool, result, error)` tuples instead of raising
 
-**Example pattern from `src/core/executor.py`:**
-```python
-def static_check(self, code: str) -> Tuple[bool, Optional[str]]:
-    """Returns (is_safe, error_message) instead of raising"""
-    try:
-        tree = ast.parse(code)
-    except SyntaxError as e:
-        return False, f"Syntax Error: {e}"
-    # ... validation logic ...
-    return True, None
-```
-
-**Example from `src/finance/data_proxy.py`:**
+**Example from `src/core/gateway.py`:**
 ```python
 try:
-    ticker = yf.Ticker(symbol)
-    df = ticker.history(start=start, end=end)
-    if df.empty:
-        return None  # Expected failure returns None
-    return df
-except Exception:
-    return None  # Network errors also return None
+    passed, report = self.verifier.verify_all_stages(...)
+    if not passed:
+        return False, None, report
+    # ... register tool
+    return True, tool, report
+except Exception as e:
+    self.checkpoint_manager.mark_failed(checkpoint_id, str(e))
+    raise
 ```
+
+**Validation:**
+- Input validation at function entry: `if len(prices) < period + 1: return 50.0`
+- Constraint validation in centralized config loader: `if execution.timeout_sec <= 0: raise ValueError(...)`
 
 ## Logging
 
-**Framework:** `print()` statements (no logging framework)
+**Framework:** Python standard library `logging`
 
 **Patterns:**
-- Structured prefixes: `[Step 1]`, `[Synthesizer]`, `[Retry]`, `[SECURITY]`
-- Progress indicators: `print(f"[Synthesizer] Generating code for: {task}")`
-- Error logging to stderr: `print(f"[SECURITY] {violation}", file=sys.stderr)`
-- File-based security logs: `data/logs/security_violations.log`
-- Thinking process logs: `data/logs/thinking_process/`
+- Module-level loggers: `self.logger = logging.getLogger("VerificationGateway")`
+- File handlers for persistent logs: `logs_dir / "gateway.log"`
+- Structured JSONL logs for machine-readable data: `gateway_attempts.jsonl`
+- Log levels: INFO for normal operations, ERROR for failures
+- Format: `'%(asctime)s | %(levelname)s | %(message)s'`
 
-**Security Violation Logging Pattern:**
+**When to log:**
+- All gateway submissions (success and failure) in `src/core/gateway.py`
+- Security violations to `data/logs/security_violations.log`
+- Evolution attempts logged with thinking traces in `data/logs/`
+
+**Example from `src/core/gateway.py`:**
 ```python
-def _log_security_violation(self, violation: str, task_id: str = "unknown"):
-    # Log to stderr
-    print(f"[SECURITY] {violation}", file=sys.stderr)
-    # Log to file
-    log_path = logs_dir / "security_violations.log"
-    with open(log_path, 'a', encoding='utf-8') as f:
-        f.write(f"{datetime.now().isoformat()} | {task_id} | {violation}\n")
+self._log_attempt(
+    "REGISTERED",
+    func_name,
+    category,
+    success=True,
+    details={"tool_id": tool.id, "version": tool.semantic_version}
+)
 ```
 
 ## Comments
 
 **When to Comment:**
-- Complex algorithms: RSI calculation logic
-- Security-critical sections: AST validation rules
-- Non-obvious design decisions: "Metadata in DB, Payload on Disk"
-- TODO markers: Not observed in current codebase
+- Module-level docstrings explaining file purpose and architecture
+- Class docstrings describing responsibilities
+- Function docstrings with Args/Returns sections for all public functions
+- Inline comments for non-obvious logic or constraints
 
-**JSDoc/Pydoc:**
-- Comprehensive function docstrings (Google style)
-- Type hints provide inline documentation
-- Module-level docstrings explain architecture
-- Example from `src/evolution/synthesizer.py`:
+**Docstring Style:**
+- Google-style docstrings with Args, Returns, Raises sections
+- Example:
   ```python
-  """Tool Synthesizer: Generate → Verify → Register → Refine
+  def submit(code: str, category: str) -> Tuple[bool, Optional[ToolArtifact], VerificationReport]:
+      """Submit a tool for verification and registration.
 
-  The core evolution loop:
-  1. Call LLM to generate tool code from task description
-  2. Multi-stage verification (AST, self-test, contract, integration)
-  3. If passed all stages, register to database and disk
-  4. If failed, call Refiner for error repair
-  """
+      Args:
+          code: Python source code for the tool
+          category: Tool category ('fetch', 'calculation', 'composite')
+
+      Returns:
+          (success, tool, report) - tool is None if verification failed
+
+      Raises:
+          VerificationError: If verification fails
+      """
   ```
+
+**Section headers in files:**
+- ASCII art separators for major sections: `# === Category-Specific System Prompts ===`
+- Numbered sections in docstrings: `1. All tools pass verification`, `2. Rollback checkpoints`
+
+**TODOs:**
+- No TODO/FIXME pattern observed in codebase - issues tracked externally
 
 ## Function Design
 
 **Size:**
-- Functions typically 20-50 lines
-- Helper methods extracted for readability
-- Example: `_validate_numeric()`, `_validate_dict()` separated from `_validate_output()`
+- Public functions: Generally 20-50 lines
+- Private helper functions: 5-20 lines
+- Main orchestration functions (like `gateway.submit()`): Can extend to 100+ lines with clear section comments
 
 **Parameters:**
-- Type hints required: `def calc_rsi(prices: list, period: int = 14) -> float:`
-- Default values for optional params: `period: int = 14`
-- Keyword arguments preferred for clarity
-- Dict/JSON for complex inputs: `args: dict`, `config: Dict[str, Any]`
+- Keyword arguments preferred for clarity: `submit(code=..., category=..., force=True)`
+- Default values for optional parameters: `period: int = 14`, `force: bool = False`
+- Explicit parameter names over positional: `extract_schema(task)` not `extract_schema(t)`
 
 **Return Values:**
-- Explicit type hints: `-> float`, `-> Tuple[bool, Optional[str]]`, `-> ExecutionTrace`
-- Tuples for multiple values: `(is_safe, error_message)`
-- None for failure cases rather than exceptions
-- Structured objects for complex returns: `ExecutionTrace`, `VerificationReport`
+- Tuple returns for multiple values: `(success: bool, tool: Optional[ToolArtifact], report: VerificationReport)`
+- Dataclasses for complex return types: `ExtractedSchema`, `VerificationReport`
+- `None` for failure cases when using `Optional[T]`
 
 ## Module Design
 
 **Exports:**
-- No explicit `__all__` declarations
-- Public API through classes and top-level functions
-- Private helpers prefixed with underscore
+- Explicit `__all__` not used
+- Public API defined through `__init__.py` re-exports
+- Example from `src/data/__init__.py`:
+  ```python
+  from src.data.interfaces import DataProvider
+  ```
 
 **Barrel Files:**
-- Not used
-- Each module imported directly: `from src.core.executor import ToolExecutor`
+- `__init__.py` files used as barrel exports for clean imports
+- Package structure: `src/core/`, `src/evolution/`, `src/finance/`, `src/extraction/`
 
-**Module Structure Pattern:**
+## Configuration Management
+
+**Centralized config:**
+- `src/config.py` for global settings: paths, LLM settings, execution limits
+- `configs/constraints.yaml` for runtime constraints loaded via `src/core/constraints.py`
+- Environment variables via manual .env parsing in `src/config.py`
+
+**Pattern:**
 ```python
-# Docstring
-"""Module purpose and architecture notes."""
+# Global config
+from src.config import LLM_MODEL, EXECUTION_TIMEOUT_SEC
 
-# Imports (standard, third-party, local)
-import sys
-from typing import ...
-
-# Constants
-CONSTANT_NAME = value
-
-# Classes
-class ClassName:
-    pass
-
-# Functions
-def helper_function():
-    pass
-
-# Main execution
-if __name__ == "__main__":
-    # Test code or CLI entry point
+# Constraint config
+from src.core.constraints import get_constraints
+constraints = get_constraints()
+allowed_modules = constraints.get_allowed_modules('calculation')
 ```
 
-## Type Annotations
+## Architectural Patterns
 
-**Usage:**
-- Comprehensive type hints throughout codebase
-- Function signatures: `def func(arg: type) -> return_type:`
-- Complex types from `typing`: `Optional`, `Tuple`, `Dict`, `List`, `Set`
-- Forward references avoided by proper import order
-- SQLModel fields use `Field()` with metadata:
-  ```python
-  name: str = Field(index=True)
-  content_hash: str = Field(index=True, unique=True)
-  ```
+**Gateway Pattern:**
+- All tool registration MUST go through `VerificationGateway.submit()`
+- Direct `registry.register()` calls prohibited
+- Centralized enforcement point documented in file headers
+
+**Protocol-Based Interfaces:**
+- `DataProvider` Protocol defines interface for data adapters
+- Runtime protocol checking with `@runtime_checkable`
+
+**Singleton Pattern:**
+- Global instances via getter functions: `get_gateway()`, `get_constraints()`
+- Lazy initialization with module-level `_instance` variables
+
+**Dataclasses:**
+- Used for configuration: `ExecutionConstraints`, `CategoryConstraints`
+- Used for structured data: `ExtractedSchema`, `ToolContract`
 
 ## Security Conventions
 
-**Critical Rules:**
-- Always use AST validation before executing generated code
-- Never use `eval()`, `exec()`, `__import__()` in generated tools
-- Subprocess sandboxing for all code execution
-- Banned modules/calls/attributes defined in constants
-- Capability-based permissions per tool category
+**AST Analysis:**
+- All code passes through `ToolExecutor.static_check()` before execution
+- Capability-based module checking: different rules for 'calculation' vs 'fetch'
+- Centralized banned lists in `configs/constraints.yaml`
 
-**Pattern from `src/core/executor.py`:**
-```python
-BANNED_MODULES = {
-    'os', 'sys', 'subprocess', 'shutil', 'builtins',
-    'importlib', 'ctypes', 'socket', 'http', 'urllib',
-    # ... more
-}
+**Subprocess Isolation:**
+- All tool execution via subprocess with timeout
+- JSON IPC for parameter passing, avoiding `eval()`
+- Memory and timeout limits from centralized config
 
-BANNED_CALLS = {
-    'eval', 'exec', 'compile', '__import__',
-    # ... more
-}
-```
+**No Trust in Generated Code:**
+- Multi-stage verification before registration
+- Rollback checkpoints via `CheckpointManager`
+- All attempts logged for audit trail
+
+## Database Conventions
+
+**ORM:**
+- SQLModel for SQLite database access
+- Table names in snake_case: `tool_artifacts`, `execution_traces`
+- Migrations via manual `ALTER TABLE` in `_migrate_tool_artifacts()`
+
+**Schema Evolution:**
+- Migration functions: `_migrate_tool_artifacts()`, `_migrate_execution_traces()`
+- Check existing columns before adding: `if col_name not in existing_columns`
+- Backwards-compatible migrations only
+
+## File Organization
+
+**Generated Files:**
+- Tool code stored in `data/artifacts/generated/` with naming: `{tool_name}_v{version}_{hash8}.py`
+- Logs in `data/logs/`: `gateway.log`, `security_violations.log`, `gateway_attempts.jsonl`
+- Database at `data/db/evolution.db`
+
+**Source Files:**
+- Core logic in `src/core/`: models, executor, verifier, gateway
+- Evolution logic in `src/evolution/`: synthesizer, refiner
+- Domain logic in `src/finance/`: data_proxy, bootstrap
+- Tests mirror source structure: `tests/core/`, `tests/extraction/`
 
 ---
 
-*Convention analysis: 2026-02-03*
+*Convention analysis: 2026-02-06*

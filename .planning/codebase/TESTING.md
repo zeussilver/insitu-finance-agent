@@ -1,335 +1,474 @@
 # Testing Patterns
 
-**Analysis Date:** 2026-02-03
+**Analysis Date:** 2026-02-06
 
 ## Test Framework
 
 **Runner:**
-- No formal test framework detected (no pytest, unittest configuration)
-- Manual testing through:
-  - `if __name__ == "__main__":` blocks in modules
-  - `benchmarks/run_eval.py` evaluation suite
-  - `main.py --security-check` command
+- pytest (version unspecified in requirements.txt, installed implicitly)
+- Config: No explicit `pytest.ini` or `pyproject.toml` config detected
+- `.pytest_cache/` directory present, confirming pytest usage
 
 **Assertion Library:**
-- Built-in `assert` statements
-- No external assertion library (pytest, unittest.mock)
+- pytest built-in assertions
+- Standard Python `assert` statements throughout
 
 **Run Commands:**
 ```bash
-python main.py --security-check     # Verify security mechanisms
-python benchmarks/run_eval.py       # Run benchmark evaluation
-python src/core/executor.py         # Test executor module
-python src/core/verifier.py         # Test verifier module
-python src/core/capabilities.py     # Test capability system
+python -m pytest tests/                    # Run all tests
+python -m pytest tests/core/               # Run core module tests
+python -m pytest tests/ -v                 # Verbose mode
+python -m pytest tests/extraction/ -v      # Specific module with details
+python main.py --security-check            # Manual security verification (not pytest)
 ```
+
+**Test Organization:**
+- 59 tests collected across 11 test files (3 import errors observed)
+- Test modules: `test_executor.py`, `test_gateway.py`, `test_refiner.py`, `test_adapters.py`, `test_schema.py`, `test_indicators.py`
 
 ## Test File Organization
 
 **Location:**
-- Inline tests in `if __name__ == "__main__":` blocks within source files
-- Evaluation suite: `benchmarks/run_eval.py`, `benchmarks/compare_runs.py`
-- Task definitions: `benchmarks/tasks.jsonl`
-- No separate `tests/` directory
+- Separate `tests/` directory mirroring `src/` structure
+- Pattern: `tests/core/`, `tests/extraction/`, `tests/data/`, `tests/evolution/`
 
 **Naming:**
-- No dedicated test files (`test_*.py` or `*_test.py`)
-- Test data in JSONL: `benchmarks/tasks.jsonl`, `benchmarks/security_tasks.jsonl`
-- Results stored: `benchmarks/results/*.json`
+- Test files: `test_{module}.py` format
+- Example: `tests/core/test_executor.py` tests `src/core/executor.py`
 
 **Structure:**
 ```
-fin_evo_agent/
-├── src/
-│   └── core/
-│       └── executor.py          # Contains tests in __main__
-├── benchmarks/
-│   ├── run_eval.py              # Evaluation suite
-│   ├── compare_runs.py          # Result comparison
-│   ├── tasks.jsonl              # 20 benchmark tasks
-│   └── results/                 # Test results
+tests/
+├── __init__.py
+├── core/
+│   ├── __init__.py
+│   ├── test_executor.py      # Tests ToolExecutor AST security
+│   └── test_gateway.py        # Tests VerificationGateway
+├── extraction/
+│   ├── __init__.py
+│   ├── test_schema.py         # Schema extraction tests
+│   ├── test_indicators.py     # Indicator detection tests
+│   └── golden_schemas.json    # Golden test data (55 test cases)
+├── evolution/
+│   ├── __init__.py
+│   └── test_refiner.py        # Tool refinement tests
+└── data/
+    ├── __init__.py
+    └── test_adapters.py       # DataProvider protocol tests
 ```
 
 ## Test Structure
 
 **Suite Organization:**
 ```python
-if __name__ == "__main__":
-    # Test 1: Safe code
-    safe_code = '''...'''
-    is_safe, error = executor.static_check(safe_code)
-    print(f"Safe code check: is_safe={is_safe}")
+class TestStaticCheck:
+    """Test static AST security analysis."""
 
-    # Test 2: Dangerous code
-    dangerous_codes = [...]
-    for code in dangerous_codes:
-        is_safe, error = executor.static_check(code)
-        print(f"  {code[:30]}... -> blocked={not is_safe}")
+    @pytest.fixture
+    def executor(self):
+        return ToolExecutor()
 
-    # Test 3: Execute safe code
-    trace = executor.execute(safe_code, "verify_only", {}, "test_task")
-    print(f"Exit code: {trace.exit_code}")
+    def test_safe_pandas_code(self, executor):
+        """Safe code using pandas should pass."""
+        safe_code = '''
+import pandas as pd
+def calc_ma(prices: list, window: int = 5) -> float:
+    return float(pd.Series(prices).rolling(window).mean().iloc[-1])
+'''
+        is_safe, error = executor.static_check(safe_code)
+        assert is_safe is True
+        assert error is None
+
+    def test_banned_os_import(self, executor):
+        """Import of os module should be blocked."""
+        dangerous_code = 'import os; os.system("ls")'
+        is_safe, error = executor.static_check(dangerous_code)
+        assert is_safe is False
+        assert "os" in error.lower()
 ```
 
 **Patterns:**
-- Multiple test cases in sequence
-- Print-based output verification
-- Manual inspection of results
-- Example from `src/core/verifier.py`:
-  ```python
-  # Test with contract
-  passed, report = verifier.verify_all_stages(
-      code=test_code,
-      category="calculation",
-      task_id="test_001",
-      contract=contract
-  )
+- Class-based test organization: `class TestStaticCheck`, `class TestExecute`
+- Descriptive class names indicating test focus area
+- One class per major feature or behavior group
+- `@pytest.fixture` for test dependencies and setup
 
-  print(f"Verification result: {'PASS' if passed else 'FAIL'}")
-  for stage in report.stages:
-      print(f"  {stage.stage.name}: {stage.result.value}")
-  ```
+**Naming:**
+- Test methods: `test_{what_is_being_tested}`
+- Descriptive names: `test_safe_pandas_code`, `test_banned_os_import`, `test_yfinance_blocked_in_calculation`
+- Negative tests clearly named: `test_unsafe_code_blocked`, `test_failure_logged`
+
+## Fixtures
+
+**Setup Pattern:**
+```python
+@pytest.fixture
+def executor(self):
+    return ToolExecutor()
+
+@pytest.fixture
+def gateway(tmp_path):
+    """Create a gateway with temporary log directory."""
+    gw = VerificationGateway()
+    gw.logs_dir = tmp_path / "logs"
+    gw.logs_dir.mkdir(parents=True, exist_ok=True)
+    gw._setup_logging()
+    return gw
+```
+
+**Fixture Scope:**
+- Function-scoped fixtures (default): `executor()`, `gateway()`
+- No module or session-scoped fixtures observed
+
+**Data Fixtures:**
+```python
+@pytest.fixture
+def valid_calc_code():
+    """Valid RSI calculation code."""
+    return '''
+import pandas as pd
+import numpy as np
+
+def calc_rsi(prices: list, period: int = 14) -> float:
+    # ... implementation
+'''
+
+@pytest.fixture
+def golden_test_set():
+    """Load golden test set from JSON file."""
+    golden_path = Path(__file__).parent / "golden_schemas.json"
+    with open(golden_path, 'r', encoding='utf-8') as f:
+        return json.load(f)
+```
+
+**Teardown:**
+- No explicit teardown observed
+- Relies on pytest's automatic cleanup and `tmp_path` fixture
 
 ## Mocking
 
-**Framework:** No mocking framework
+**Framework:** No explicit mocking library detected (unittest.mock, pytest-mock not in requirements)
 
 **Patterns:**
-- Conditional mock responses when API key not present
-- Mock LLM responses in `src/core/llm_adapter.py`:
-  ```python
-  def generate_tool_code(self, task: str, error_context: Optional[str] = None) -> dict:
-      if self.client is None:
-          # Mock only when no API key configured
-          raw_response = self._mock_generate(task, category)
-      else:
-          # Real API call
-          completion = self.client.chat.completions.create(...)
-  ```
-- Sample data generation for testing:
-  ```python
-  sample_prices = [10, 12, 11, 13, 15, 17, 16, 15, 14, 13, 14, 15, 16, 17, 18]
-  test_args = {"prices": sample_prices, "period": 14}
-  ```
+- Real objects used for most tests (integration-style)
+- Temporary directories via `tmp_path` fixture for isolation
+- Example: `gateway.logs_dir = tmp_path / "logs"` to avoid polluting real logs
+
+**Test Doubles:**
+- Mock data adapter: `src/data/adapters/mock_adapter.py` (not a test mock, production fallback)
+- Golden test data: `tests/extraction/golden_schemas.json` (55 test cases)
 
 **What to Mock:**
-- LLM API calls when no API key configured
-- Network requests (implicitly via cache)
-- Test runs default to mock mode
+- File system operations via `tmp_path` fixture
+- LLM calls implicitly avoided in most tests (test pure logic)
 
 **What NOT to Mock:**
-- AST security validation (always real)
-- Subprocess execution (always sandboxed)
-- Core logic and algorithms
+- Core business logic: `ToolExecutor`, `VerificationGateway` used directly
+- Database operations: Tests use real SQLModel/SQLite (likely in-memory or temp)
+- Security checks: Real AST analysis executed to ensure correctness
 
 ## Fixtures and Factories
 
 **Test Data:**
 ```python
-# From benchmarks/tasks.jsonl - structured test cases
-{
-    "task_id": "calc_rsi",
-    "query": "计算 RSI 相对强弱指标",
-    "category": "calculation",
-    "contract_id": "calc_rsi",
-    "expected_output": {
-        "type": "numeric",
-        "value": 65.0,
-        "tolerance": 0.1
-    }
-}
+# Inline test data in fixtures
+@pytest.fixture
+def valid_calc_code():
+    return '''
+import pandas as pd
+def calc_rsi(prices: list, period: int = 14) -> float:
+    # Full implementation with test assertions
+'''
 
-# Inline sample data in verifier
-sample_prices = [100.0, 101.5, 99.8, 102.3, 101.0, ...]
-sample_volumes = [1000000, 1100000, 950000, ...]
+# External golden data
+@pytest.fixture
+def golden_test_set():
+    golden_path = Path(__file__).parent / "golden_schemas.json"
+    with open(golden_path, 'r', encoding='utf-8') as f:
+        return json.load(f)
 ```
 
 **Location:**
-- JSONL files: `benchmarks/tasks.jsonl`
-- Inline in test functions: `src/core/verifier.py:_generate_test_args()`
-- No centralized fixture repository
+- Golden test data: `tests/extraction/golden_schemas.json`
+- Inline fixtures within test files
+- No separate `conftest.py` for shared fixtures observed
+
+**Factory Pattern:**
+- Not explicitly used
+- Fixtures return fresh instances each time: `return ToolExecutor()`
 
 ## Coverage
 
-**Requirements:** No coverage tracking configured
+**Requirements:** No coverage target enforced
 
 **View Coverage:**
-- Not available
-- Manual inspection through evaluation results
-- Success rate metrics in `benchmarks/run_eval.py`
+- No coverage configuration detected (.coveragerc absent)
+- No coverage requirements in CI/CD
 
-**Current Metrics (from Architecture Overhaul):**
-- Target: 90%+ task success rate
-- Security Block Rate: 100% (verified)
-- Tool Reuse Rate: ≥30% target
+**Gaps:**
+- 3 test modules have import errors (likely due to circular dependencies or missing setup)
+- No integration tests for full end-to-end workflows detected
 
 ## Test Types
 
 **Unit Tests:**
-- Inline module tests in `if __name__ == "__main__":`
-- Scope: Individual functions and classes
-- Example from `src/core/executor.py`:
-  ```python
-  if __name__ == "__main__":
-      executor = ToolExecutor()
-
-      # Test 1: Safe code
-      safe_code = '''...'''
-      is_safe, error = executor.static_check(safe_code)
-
-      # Test 2: Dangerous code
-      dangerous_codes = [...]
-      for code in dangerous_codes:
-          is_safe, error = executor.static_check(code)
-  ```
+- Scope: Individual functions and methods
+- Pattern: Test one function with various inputs
+- Example: `test_safe_pandas_code()` tests `executor.static_check()` with safe code
+- Coverage: Core security checks, AST analysis, contract validation
 
 **Integration Tests:**
-- Multi-stage verification pipeline tests tool integration
-- Stage 4 (INTEGRATION) in `src/core/verifier.py`:
+- Scope: Multiple components working together
+- Pattern: Real VerificationGateway with real Verifier and Executor
+- Example: `test_submit_valid_code()` exercises gateway → verifier → executor → registry
+- No mocking of internal components
+
+**Validation Tests:**
+- Golden test sets for schema extraction
+- 55 test cases in `golden_schemas.json`
+- Accuracy thresholds: `assert accuracy >= 0.8` for category classification
+- Example from `test_schema.py`:
   ```python
-  def _verify_integration(self, code: str, func_name: str, real_data: Dict[str, Any], task_id: str):
-      """Stage 4: Verify with real data (fetch tools only)."""
-      trace = self.executor.execute(code, func_name, real_data, task_id)
-      # Validate against real yfinance data
+  def test_overall_accuracy(self, golden_test_set):
+      """Test overall schema extraction accuracy (≥95% target)."""
+      # ... run all golden tests
+      assert overall_accuracy >= 0.80
   ```
 
 **E2E Tests:**
-- Evaluation suite: `benchmarks/run_eval.py`
-- Full workflow: task → synthesis → verification → execution → judgment
-- 20 benchmark tasks covering fetch, calculation, and composite categories
-- Result tracking: `benchmarks/results/*.json`
-
-**Security Tests:**
-- Dedicated security verification: `main.py --security-check`
-- Dangerous code patterns: `benchmarks/security_tasks.jsonl`
-- AST-level validation tests in `src/core/executor.py`
+- Not detected in test suite
+- Manual E2E via `python main.py --task "..."` and benchmark suite
+- Benchmark runner at `benchmarks/run_eval.py` (not pytest)
 
 ## Common Patterns
 
-**Self-Test Pattern (Generated Tools):**
-```python
-def calc_rsi(prices: list, period: int = 14) -> float:
-    """Calculate RSI indicator."""
-    # ... implementation ...
-    return float(rsi.iloc[-1])
-
-if __name__ == "__main__":
-    # Test case 1: Normal data
-    test_prices = [44, 44.5, 44.25, 43.75, 44.5, ...]
-    result = calc_rsi(test_prices, 5)
-    assert 0 <= result <= 100
-
-    # Test case 2: Edge case
-    short_prices = [10, 11]
-    result2 = calc_rsi(short_prices, 14)
-    assert result2 == 50.0
-
-    print("Tests passed!")
-```
-
-**Verification Pipeline Pattern:**
-```python
-# From src/core/verifier.py
-passed, report = verifier.verify_all_stages(
-    code=code,
-    category=category,
-    task_id=task_id,
-    contract=contract
-)
-
-for stage in report.stages:
-    if stage.result == VerificationResult.FAIL:
-        print(f"Failed at {stage.stage.name}: {stage.message}")
-```
-
 **Async Testing:**
-- Not used (no async/await patterns in codebase)
+- Not applicable - no async code detected in codebase
 
 **Error Testing:**
 ```python
-# Security violation testing
-dangerous_codes = [
-    'import os; os.system("ls")',
-    'import subprocess; subprocess.run(["ls"])',
-    'eval("1+1")',
-]
+def test_banned_os_import(self, executor):
+    """Import of os module should be blocked."""
+    dangerous_code = 'import os; os.system("ls")'
+    is_safe, error = executor.static_check(dangerous_code)
+    assert is_safe is False
+    assert "os" in error.lower()
 
-all_blocked = True
-for code in dangerous_codes:
-    is_safe, error = executor.static_check(code)
-    if is_safe:
-        all_blocked = False
-
-if all_blocked:
-    print("[Pass] All dangerous operations blocked!")
+def test_execute_dangerous_code_blocked(self, executor):
+    """Dangerous code should be blocked before execution."""
+    dangerous_code = 'import os; os.system("ls")'
+    trace = executor.execute(dangerous_code, func_name="dangerous", args={}, task_id="test")
+    assert trace.exit_code == 1
+    assert "SecurityException" in trace.std_err
 ```
 
-**Contract Validation Testing:**
+**Pattern:**
+- Test both detection (static check) and prevention (execution)
+- Assert on error messages for specificity
+- Negative tests are first-class citizens
+
+**Protocol Testing:**
 ```python
-# From src/core/verifier.py
-def _validate_output(self, output: Optional[str], contract: ToolContract) -> Tuple[bool, str]:
-    """Validate output matches contract constraints."""
-    if contract.output_type == OutputType.NUMERIC:
-        return self._validate_numeric(output, contract)
-    elif contract.output_type == OutputType.DICT:
-        return self._validate_dict(output, contract)
-    # ... more output types
+def test_mock_adapter_satisfies_protocol(self):
+    """MockAdapter should satisfy DataProvider protocol."""
+    adapter = MockAdapter()
+    assert isinstance(adapter, DataProvider)
+
+def test_same_interface_mock_and_yfinance(self):
+    """Mock and real adapter should have identical interfaces."""
+    mock_methods = set(dir(MockAdapter))
+    yf_methods = set(dir(YFinanceAdapter))
+    protocol_methods = {'get_historical', 'get_quote', 'get_financial_info'}
+    # Assert both implement protocol methods
 ```
 
-**Retry Testing Pattern:**
+**Subprocess Testing:**
 ```python
-# From src/core/verifier.py - integration test with retry
-for attempt in range(max_retries + 1):
-    trace = self.executor.execute(code, func_name, real_data, task_id)
-    if trace.exit_code != 0:
-        network_errors = ['timeout', 'connection', 'network', '503', '504']
-        is_network_error = any(err in stderr_lower for err in network_errors)
-        if is_network_error and attempt < max_retries:
-            time.sleep(1.0 * (attempt + 1))
-            continue
-    # ... success path
+def test_execute_with_timeout(self, executor):
+    """Test that long-running code times out."""
+    slow_code = '''
+import time
+def slow_func():
+    time.sleep(10)
+    return "done"
+'''
+    trace = executor.execute(
+        slow_code,
+        func_name="slow_func",
+        args={},
+        task_id="test_timeout",
+        timeout_sec=1
+    )
+    assert trace.exit_code == 124  # timeout exit code
+    assert "timeout" in trace.std_err.lower()
 ```
 
-## Evaluation Framework
+## Parametrized Tests
 
-**Benchmark Structure:**
-- Tasks defined in JSONL: `benchmarks/tasks.jsonl`
-- Three-state results: PASS, FAIL, ERROR
-- Judging functions: `numeric_match()`, `list_match()`, `struct_match()`, `boolean_match()`
+**Pattern:**
+- Not explicitly using `@pytest.mark.parametrize`
+- Instead, iterate over golden test data within test functions:
+  ```python
+  def test_fetch_category(self, golden_test_set):
+      fetch_cases = [c for c in golden_test_set["test_cases"]
+                    if c["expected"]["category"] == "fetch"]
+      for case in fetch_cases:
+          schema = extract_schema(case["task"])
+          if schema.category != "fetch":
+              print(f"FAIL: {case['task'][:50]}...")
+      # Assert overall accuracy
+  ```
 
-**Metrics Tracked:**
+## Test Execution
+
+**Path Setup:**
+- Every test file includes:
+  ```python
+  import sys
+  from pathlib import Path
+  sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+  ```
+- Ensures imports work from any directory
+
+**Running Standalone:**
 ```python
-# From benchmarks/run_eval.py
-{
-    "task_success_rate": pass_count / total,
-    "tool_reuse_rate": reuse_count / total,
-    "security_block_rate": 1.0,
-    "pass_count": pass_count,
-    "fail_count": fail_count,
-    "error_count": error_count
-}
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])
 ```
+- Each test file can run independently
 
-**Result Classification:**
+**CI Integration:**
+- Benchmark workflow in `.github/workflows/benchmark.yml`
+- Runs `benchmarks/run_eval.py --config cold_start`
+- No pytest in CI detected (uses custom benchmark runner)
+
+## Assertion Patterns
+
+**Positive Assertions:**
 ```python
-class ResultState:
-    PASS = "pass"    # Task completed successfully
-    FAIL = "fail"    # Logic failure (wrong output)
-    ERROR = "error"  # External error (API, timeout, network)
+assert is_safe is True
+assert error is None
+assert tool is not None
+assert tool.name == "calc_rsi"
 ```
 
-**Test Execution:**
-```bash
-# Run evaluation with fresh registry
-python benchmarks/run_eval.py --clear-registry --run-id fresh_run
-
-# Compare two runs
-python benchmarks/compare_runs.py run1 run2
-
-# Security-only evaluation
-python benchmarks/run_eval.py --security-only
+**Negative Assertions:**
+```python
+assert is_safe is False
+assert "os" in error.lower()
+assert tool is None
 ```
+
+**Range Assertions:**
+```python
+assert 0 <= result <= 100, f"RSI out of range: {result}"
+assert 0.0 <= schema.confidence <= 1.0
+assert overall_accuracy >= 0.80
+```
+
+**Collection Assertions:**
+```python
+assert len(checkpoint_files) > 0
+assert expected_symbols.issubset(extracted_symbols)
+assert "timestamp" in entry
+```
+
+## Test Documentation
+
+**Docstrings:**
+- Every test method has a docstring explaining what it tests
+- Pattern: `"""What should happen under what conditions."""`
+- Examples:
+  - `"""Safe code using pandas should pass."""`
+  - `"""Import of os module should be blocked."""`
+  - `"""MockAdapter should satisfy DataProvider protocol."""`
+
+**Test Organization Comments:**
+```python
+# Test: Verification enforcement
+class TestVerificationEnforcement:
+    """Tests that verification is enforced before registration."""
+
+# Test: Submit and registration
+class TestSubmitMethod:
+    """Tests for the gateway submit() method."""
+```
+
+## Golden Testing Pattern
+
+**Approach:**
+- 55 golden test cases in `tests/extraction/golden_schemas.json`
+- Each case has `task` input and `expected` output
+- Tests validate accuracy across all cases
+
+**Example:**
+```python
+def test_overall_accuracy(self, golden_test_set):
+    """Test overall schema extraction accuracy (≥95% target)."""
+    total_checks = 0
+    passed_checks = 0
+
+    for case in test_cases:
+        schema = extract_schema(case["task"])
+        expected = case["expected"]
+
+        # Check category
+        total_checks += 1
+        if schema.category == expected["category"]:
+            passed_checks += 1
+
+        # Check symbols if expected
+        if "symbols" in expected:
+            total_checks += 1
+            if expected_symbols.issubset(set(schema.symbols)):
+                passed_checks += 1
+
+    overall_accuracy = passed_checks / total_checks
+    assert overall_accuracy >= 0.80
+```
+
+**Thresholds:**
+- Category accuracy: ≥80%
+- Symbol extraction: ≥85%
+- Date extraction: ≥90%
+- Indicator detection: ≥85%
+- Overall accuracy: ≥80% (target 95%)
+
+## Security Testing
+
+**AST Security Tests:**
+- Test suite: `tests/core/test_executor.py::TestStaticCheck`
+- Tests banned modules: `os`, `sys`, `subprocess`
+- Tests banned calls: `eval`, `exec`, `__import__`
+- Tests banned attributes: `__dict__`, `__globals__`
+
+**Capability-Based Tests:**
+```python
+def test_calculation_cannot_use_yfinance(self, executor):
+    """Calculation tools should not be able to import yfinance."""
+    code = '''import yfinance as yf'''
+    allowed_modules = {'pandas', 'numpy', 'datetime', 'json', 'math'}
+    is_safe, error = executor.static_check_with_rules(
+        code, allowed_modules=allowed_modules
+    )
+    assert is_safe is False
+    assert "yfinance" in error.lower()
+
+def test_fetch_can_use_yfinance(self, executor):
+    """Fetch tools should be able to import yfinance."""
+    code = '''import yfinance as yf'''
+    allowed_modules = {'pandas', 'numpy', 'yfinance', 'hashlib'}
+    is_safe, error = executor.static_check_with_rules(
+        code, allowed_modules=allowed_modules
+    )
+    assert is_safe is True
+```
+
+**Benchmark Security Tests:**
+- Separate security task set: `benchmarks/security_tasks.jsonl`
+- 5 security test cases for malicious code detection
+- Run via: `python benchmarks/run_eval.py --security-only`
 
 ---
 
-*Testing analysis: 2026-02-03*
+*Testing analysis: 2026-02-06*
