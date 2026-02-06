@@ -1,85 +1,53 @@
 # Architecture
 
-**Analysis Date:** 2026-02-05
+**Analysis Date:** 2026-02-06
 
 ## Pattern Overview
 
-**Overall:** Self-Evolving Agent with Capability-Based Tool Synthesis
+**Overall:** Self-Evolving Agent with Capability-Based Verification Gateway
 
 **Key Characteristics:**
-- LLM generates Python tools dynamically from natural language task descriptions
-- Multi-stage verification pipeline (AST security → self-tests → contract validation → integration)
-- Centralized enforcement gateway prevents verification bypass
-- Metadata-in-database, payload-on-disk pattern for tool storage
-- Reproducible data layer with parquet-based caching
+- LLM-driven tool synthesis and repair loop with multi-stage verification
+- Capability-based security model preventing dangerous code execution
+- "Metadata in DB, Payload on Disk" storage pattern for auditable evolution
+- Contract-validated tool registration with rollback checkpoints
+- Pluggable data adapters for reproducible testing
 
 ## Layers
 
-**CLI & Orchestration:**
-- Purpose: User-facing interface and task coordination
-- Location: `fin_evo_agent/main.py`, `fin_evo_agent/src/core/task_executor.py`
-- Contains: Argument parsing, task workflow orchestration, bootstrap setup
-- Depends on: Core layer, Evolution layer, Finance layer
-- Used by: End users, Benchmark suite
+**Presentation Layer (CLI):**
+- Purpose: User interaction and command dispatch
+- Location: `fin_evo_agent/main.py`
+- Contains: Argument parsing, command handlers (init, bootstrap, task, list, security-check)
+- Depends on: Core layer (registry, executor, models), Evolution layer (synthesizer)
+- Used by: End users, CI/CD pipeline
 
-**Core (Registry & Execution):**
-- Purpose: Tool storage, retrieval, and sandboxed execution
+**Core Layer:**
+- Purpose: Tool lifecycle management and security enforcement
 - Location: `fin_evo_agent/src/core/`
-- Contains:
-  - `models.py` - SQLModel schemas (5 tables: ToolArtifact, ExecutionTrace, ErrorReport, ToolPatch, BatchMergeRecord)
-  - `registry.py` - Tool CRUD operations, schema-based matching
-  - `executor.py` - AST security analysis, subprocess sandbox with 30s timeout
-  - `gateway.py` - Single enforcement point for all tool registration
-  - `verifier.py` - Multi-stage verification pipeline
-  - `contracts.py` - 17 predefined contracts for input/output validation
-  - `capabilities.py` - Category-specific module allowlists
-  - `constraints.py` - Centralized runtime constraints loader (YAML-based)
-  - `gates.py` - Three-tier evolution gate system (AUTO/CHECKPOINT/APPROVAL)
-- Depends on: Config, Data models
-- Used by: Evolution layer, CLI layer
+- Contains: Database models, registry, executor, verifier, gateway, capabilities, contracts
+- Depends on: Data layer (for fetch operations), Config module
+- Used by: Evolution layer, Task executor, Bootstrap tools
 
-**Evolution (Synthesis & Refinement):**
-- Purpose: LLM-driven tool generation and error repair
+**Evolution Layer:**
+- Purpose: Tool generation, verification, and refinement
 - Location: `fin_evo_agent/src/evolution/`
-- Contains:
-  - `synthesizer.py` - Generate → Gateway Submit → Refine loop
-  - `refiner.py` - Error analysis and patch generation (max 3 attempts)
-- Depends on: Core layer, LLM adapter
-- Used by: CLI layer, Benchmark suite
+- Contains: Synthesizer (LLM → code → gateway), Refiner (error → patch → gateway)
+- Depends on: Core layer (gateway, verifier, executor, registry), LLM adapter
+- Used by: Task executor (via synthesizer), Self-repair loop (via refiner)
 
-**Finance (Data Access):**
-- Purpose: Bootstrap tools and data proxy
-- Location: `fin_evo_agent/src/finance/`
-- Contains:
-  - `bootstrap.py` - 5 initial yfinance tools (get_stock_hist, get_financial_info, get_realtime_quote, get_index_daily, get_etf_hist)
-  - `data_proxy.py` - Reproducible data layer with @with_retry decorator, parquet caching
-- Depends on: yfinance SDK, Core models
-- Used by: Task executor, Bootstrap tools
+**Data Layer:**
+- Purpose: External data access with caching and reproducibility
+- Location: `fin_evo_agent/src/data/`, `fin_evo_agent/src/finance/`
+- Contains: DataProvider protocol, yfinance adapter, mock adapter, caching proxy
+- Depends on: External APIs (yfinance), Parquet cache storage
+- Used by: Task executor, Fetch tools, Integration tests
 
-**Data Abstraction:**
-- Purpose: Pluggable data provider interface
-- Location: `fin_evo_agent/src/data/`
-- Contains:
-  - `interfaces.py` - DataProvider Protocol for structural typing
-  - `adapters/yfinance_adapter.py` - Production adapter
-  - `adapters/mock_adapter.py` - Testing adapter
-- Depends on: None (Protocol-based)
-- Used by: Finance layer, Future providers
-
-**Extraction (Schema Intelligence):**
-- Purpose: Task schema and technical indicator extraction
-- Location: `fin_evo_agent/src/extraction/`
-- Contains:
-  - `schema.py` - Extract task category/params from NL queries
-  - `indicators.py` - Identify technical indicator types
-- Depends on: Core models
-- Used by: Evolution layer for schema-based tool matching
-
-**Configuration:**
-- Purpose: Global settings and constraint definitions
+**Configuration Layer:**
+- Purpose: Centralized runtime constraints and settings
 - Location: `fin_evo_agent/src/config.py`, `fin_evo_agent/configs/constraints.yaml`
-- Contains: Database paths, LLM config, execution limits, capability rules
-- Depends on: None
+- Contains: Global paths, LLM config, execution limits, capability rules
+- Depends on: Nothing (root dependency)
 - Used by: All layers
 
 ## Data Flow
@@ -87,114 +55,150 @@
 **Tool Synthesis Flow:**
 
 1. User submits task via CLI (`main.py --task "计算 RSI"`)
-2. TaskExecutor infers category and fetches data if needed (via bootstrap tools)
-3. Synthesizer generates code using LLM with category-specific prompt
-4. VerificationGateway runs multi-stage verification:
-   - Stage 1: AST security check (capability-based module rules)
-   - Stage 2: Self-test execution (built-in assertions)
-   - Stage 3: Contract validation (output constraints)
-   - Stage 4: Integration test (real data, fetch tools only)
-5. If all stages pass, Gateway registers tool to SQLite + disk
-6. If any stage fails, Refiner analyzes error and generates patch (max 3 attempts)
-7. Tool executes with sandboxed subprocess (30s timeout)
+2. Synthesizer extracts category and contract from task description
+3. LLM generates Python code using category-specific prompts
+4. Synthesizer submits code to VerificationGateway
+5. Gateway creates rollback checkpoint and runs multi-stage verification
+6. Verification passes: Registry stores metadata in DB, code on disk
+7. Verification fails: Refiner analyzes error and generates patch
+8. Patched code re-submitted to gateway (max 3 attempts)
 
-**Tool Execution Flow:**
+**Task Execution Flow:**
 
-1. TaskExecutor extracts symbol/date range from query
-2. Fetches OHLCV data via bootstrap tools (cached in parquet)
-3. Prepares arguments from fetched data (maps Close → prices, etc.)
-4. Executor runs tool code in subprocess sandbox
-5. Extracts result from stdout and validates against contract
-6. Returns ExecutionTrace with result/error
+1. TaskExecutor receives task with query and category
+2. Executor extracts stock symbol and date range from query
+3. DataProxy fetches OHLCV data from yfinance (cached)
+4. For simple queries (latest/highest/lowest close), return directly
+5. For complex queries, prepare args from fetched data
+6. ToolExecutor runs tool code in subprocess sandbox (30s timeout)
+7. ExecutionTrace logged with inputs, outputs, errors, timing
+8. If error occurs, ErrorReport generated and Refiner invoked
+
+**Verification Pipeline Flow:**
+
+1. AST Security Check: Parse code, validate imports/calls against capability whitelist
+2. Self-Test Execution: Run built-in assertions in sandboxed subprocess
+3. Contract Validation: Check output type and constraints (min/max, required keys)
+4. Integration Test: Fetch tools run against real data (cached yfinance)
+5. ALL stages must pass for tool registration (no implicit pass)
 
 **State Management:**
-- SQLite stores tool metadata (name, version, hash, permissions, verification_stage)
-- Disk stores actual Python code files (`data/artifacts/generated/{name}_v{version}_{hash}.py`)
-- Parquet cache stores network responses (`data/cache/{md5}.parquet`)
-- JSONL logs store gateway attempts (`data/logs/gateway_attempts.jsonl`)
+- Database state: SQLite with 5 tables (ToolArtifact, ExecutionTrace, ErrorReport, ToolPatch, BatchMergeRecord)
+- File state: Tool code stored as `.py` files in `data/artifacts/generated/`
+- Cache state: Parquet snapshots in `data/cache/` for reproducible yfinance data
+- Checkpoint state: Gateway creates rollback points before each registration
 
 ## Key Abstractions
 
 **VerificationGateway:**
 - Purpose: Single enforcement point for all tool registration
 - Examples: `fin_evo_agent/src/core/gateway.py`
-- Pattern: Gateway pattern with checkpoint rollback
-- All evolution modules MUST use `gateway.submit()` - direct `registry.register()` is prohibited
+- Pattern: Facade pattern wrapping verifier, registry, gatekeeper, checkpoint manager
+- Key methods: `submit()` (verify + register atomically), `verify_only()` (dry-run)
+- Logging: All registration attempts logged to `data/logs/gateway_attempts.jsonl`
 
 **ToolContract:**
-- Purpose: Input/output validation rules for tool categories
+- Purpose: Defines input/output contracts for task types
 - Examples: `fin_evo_agent/src/core/contracts.py`
-- Pattern: Dataclass-based specification with 17 predefined contracts
-- Each contract defines input_types, required_inputs, output_type, output_constraints
+- Pattern: 17 predefined contracts (calc_rsi, fetch_price, comp_signal, etc.)
+- Fields: category, input_types, required_inputs, output_type, output_constraints
+- Usage: LLM prompt generation, multi-stage verification, error analysis
+
+**MultiStageVerifier:**
+- Purpose: Runs 4-stage verification pipeline (AST → self-test → contract → integration)
+- Examples: `fin_evo_agent/src/core/verifier.py`
+- Pattern: Chain of responsibility with VerificationReport accumulation
+- Stages: VerificationStage enum (NONE=0, AST_SECURITY=1, SELF_TEST=2, CONTRACT_VALID=3, INTEGRATION=4)
+- Result: (passed: bool, report: VerificationReport)
 
 **ToolCapability:**
-- Purpose: Category-specific module allowlists
-- Examples: `fin_evo_agent/src/core/capabilities.py`
-- Pattern: Enum-based capabilities with get_allowed_modules() mapping
-- Different categories have different allowed modules (fetch can import yfinance, calculation cannot)
+- Purpose: Capability-based permission system for tool execution
+- Examples: `fin_evo_agent/src/core/capabilities.py`, `fin_evo_agent/configs/constraints.yaml`
+- Pattern: FETCH tools can import yfinance, CALCULATE tools cannot
+- Constraints: Delegates to centralized YAML for allowed/banned modules
+- Enforcement: AST static analysis in `ToolExecutor.static_check_with_rules()`
 
 **DataProvider Protocol:**
-- Purpose: Abstract financial data access
-- Examples: `fin_evo_agent/src/data/interfaces.py`
-- Pattern: Structural typing (Protocol) for pluggable adapters
-- No inheritance required - duck typing for get_historical(), get_quote(), etc.
+- Purpose: Abstract interface for pluggable financial data sources
+- Examples: `fin_evo_agent/src/data/interfaces.py`, `fin_evo_agent/src/data/adapters/yfinance_adapter.py`
+- Pattern: Protocol-based structural typing (no inheritance required)
+- Methods: `get_historical()`, `get_quote()`, `get_financial_info()`, `get_multi_historical()`
+- Implementations: YFinanceAdapter (production), MockAdapter (testing)
 
-**ExecutionTrace:**
-- Purpose: Complete record of tool execution for debugging and refinement
-- Examples: `fin_evo_agent/src/core/models.py`
-- Pattern: Immutable execution log with input_args, output_repr, std_out, std_err, execution_time_ms
+**LLMAdapter:**
+- Purpose: Qwen3 API integration with category-specific prompts
+- Examples: `fin_evo_agent/src/core/llm_adapter.py`
+- Pattern: OpenAI-compatible API with thinking mode enabled
+- Prompts: FETCH_SYSTEM_PROMPT (yfinance+caching), CALCULATE_SYSTEM_PROMPT (pandas/numpy), COMPOSITE_SYSTEM_PROMPT (tool chaining)
+- Fallback: Mock responses if API_KEY not set
 
 ## Entry Points
 
-**CLI (main.py):**
+**CLI Entry Point:**
 - Location: `fin_evo_agent/main.py`
-- Triggers: Direct invocation (`python main.py --task "..."`)
-- Responsibilities: Command routing (--init, --bootstrap, --task, --list, --security-check)
+- Triggers: Command-line arguments (--init, --bootstrap, --task, --list, --security-check)
+- Responsibilities: Parse args, dispatch to appropriate command handler, initialize components
 
-**Benchmark Runner:**
+**Benchmark Entry Point:**
 - Location: `fin_evo_agent/benchmarks/run_eval.py`
-- Triggers: Evaluation suite invocation
-- Responsibilities: Run 20 benchmark tasks, measure success rate, tool reuse, security blocking
+- Triggers: CI/CD pipeline, manual evaluation runs
+- Responsibilities: Load tasks from `benchmarks/tasks.jsonl`, run agent in cold_start or warm_start mode, collect metrics, save results
 
-**Bootstrap Registration:**
+**Database Initialization:**
+- Location: `fin_evo_agent/src/core/models.py:init_db()`
+- Triggers: `main.py --init`, automatic on first import
+- Responsibilities: Create 5 SQLModel tables, run migrations for new columns, ensure data directory structure
+
+**Bootstrap Tool Creation:**
 - Location: `fin_evo_agent/src/finance/bootstrap.py`
-- Triggers: First run or explicit --bootstrap command
-- Responsibilities: Register 5 initial yfinance tools via VerificationGateway
+- Triggers: `main.py --bootstrap`
+- Responsibilities: Register 5 initial yfinance tools (get_stock_hist, get_financial_info, get_realtime_quote, get_index_daily, get_etf_hist)
 
 ## Error Handling
 
-**Strategy:** Multi-level error recovery with automatic refinement
+**Strategy:** Multi-layer error handling with LLM-driven repair
 
 **Patterns:**
-- AST security violations block immediately at Stage 1 (no execution)
-- Self-test failures trigger Refiner with error context
-- Contract validation failures provide constraint details for repair
-- Network errors retry with exponential backoff (3 attempts, 1-10s)
-- Subprocess timeouts terminate after 30s with SIGKILL
-- All registration attempts logged to JSONL for audit trail
+- AST security violations: Fail immediately with SecurityException (unfixable)
+- Import errors: Refiner suggests module replacements (talib → pandas/numpy)
+- Type errors: Refiner adds type conversion and validation
+- Key errors: Refiner uses `.get()` with defaults instead of direct indexing
+- Execution timeouts: Fail fast (30s subprocess timeout)
+- Network errors: Retry with exponential backoff (3 attempts, 1-10s delay)
+- Contract violations: Refiner adjusts output format to match contract
+
+**Repair Loop:**
+1. ExecutionTrace captures error (exit_code != 0, std_err)
+2. Refiner creates ErrorReport with LLM-analyzed root cause
+3. Refiner generates patched code based on error context
+4. Patch submitted to VerificationGateway (max 3 attempts)
+5. If all attempts fail, tool marked as FAILED status
 
 ## Cross-Cutting Concerns
 
-**Logging:** Structured logging to `data/logs/` (gateway.log for registration, gateway_attempts.jsonl for structured audit)
+**Logging:**
+- Gateway: `data/logs/gateway.log` (standard logger), `data/logs/gateway_attempts.jsonl` (structured attempts)
+- Evolution: `data/logs/evolution_gates.log` (gatekeeper decisions)
+- Security: `data/logs/security_violations.log` (AST check failures)
+- LLM: `data/logs/thinking_process.log` (Qwen3 thinking chains)
 
 **Validation:**
-- Multi-stage verification via VerificationGateway
-- Contract-based output validation
-- AST-based security analysis (banned modules: os, sys, subprocess, shutil, socket, pickle)
+- AST-level: Static analysis in `ToolExecutor.static_check_with_rules()` (module/call/attribute whitelist)
+- Runtime: Subprocess sandbox with 30s timeout and 512MB memory limit
+- Contract: Output type and constraint validation in `MultiStageVerifier.verify_stage_contract()`
+- Integration: Real data test against cached yfinance snapshots
 
 **Authentication:**
-- LLM API key via environment variable (API_KEY)
-- yfinance uses public API (no authentication)
-
-**Caching:**
-- Data layer: MD5-keyed parquet files in `data/cache/`
-- Network retry: @with_retry decorator with exponential backoff
+- LLM API: Qwen3 via DashScope with API_KEY environment variable
+- Data API: yfinance (no auth required, public data only)
+- No user authentication (single-user CLI application)
 
 **Checkpointing:**
-- Gateway creates rollback checkpoints before registration
-- CheckpointManager stores context in `data/checkpoints/`
-- Failed operations can be audited and rolled back
+- Gateway creates rollback checkpoints before each tool registration
+- Checkpoint format: JSON files in `data/checkpoints/` with timestamp and context
+- Checkpoint states: pending → complete/failed
+- Recovery: Manual rollback via checkpoint files (automated recovery not yet implemented)
 
 ---
 
-*Architecture analysis: 2026-02-05*
+*Architecture analysis: 2026-02-06*
