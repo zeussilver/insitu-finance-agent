@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 import sys
 sys.path.insert(0, str(__file__).rsplit("/", 3)[0])
-from src.config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, LLM_TEMPERATURE, LLM_ENABLE_THINKING
+from src.config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL, LLM_TEMPERATURE, LLM_ENABLE_THINKING, LLM_TIMEOUT
 
 
 # === Category-Specific System Prompts ===
@@ -372,7 +372,7 @@ class LLMAdapter:
             self.client = OpenAI(
                 api_key=LLM_API_KEY,
                 base_url=LLM_BASE_URL,
-                timeout=180.0,  # Increased for thinking mode
+                timeout=float(LLM_TIMEOUT),
             )
         else:
             self.client = None

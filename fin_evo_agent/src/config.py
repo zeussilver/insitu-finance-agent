@@ -38,6 +38,7 @@ LLM_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 LLM_MODEL = "qwen3-max-2026-01-23"
 LLM_TEMPERATURE = 0.1
 LLM_ENABLE_THINKING = True
+LLM_TIMEOUT = int(os.getenv("LLM_TIMEOUT", "180"))
 
 # Execution limits
 EXECUTION_TIMEOUT_SEC = 30

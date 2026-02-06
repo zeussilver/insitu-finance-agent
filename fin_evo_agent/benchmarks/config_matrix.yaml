@@ -31,8 +31,8 @@ benchmark_matrix:
 
 # Execution Settings
 execution:
-  timeout_per_task_sec: 120
-  max_refiner_attempts: 3
+  timeout_per_task_sec: 300
+  max_refiner_attempts: 2
   parallel_tasks: 1  # Sequential execution for reproducibility
 
 # PR Merge Gates

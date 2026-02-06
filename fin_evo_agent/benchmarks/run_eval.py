@@ -63,6 +63,16 @@ class ResultState:
     ERROR = "error"  # External error (API, timeout, network)
 
 
+class TaskTimeoutError(Exception):
+    """Raised when a single task exceeds its time budget."""
+    pass
+
+
+def _timeout_handler(signum, frame):
+    """Signal handler for SIGALRM — raises TaskTimeoutError."""
+    raise TaskTimeoutError("Task exceeded time budget")
+
+
 # --- Agent Configurations ---
 
 AGENT_CONFIGS = {
@@ -875,20 +885,91 @@ class EvalRunner:
                 if line.strip():
                     tasks.append(json.loads(line))
 
-        print(f"=== Running {len(tasks)} tasks (Agent: {self.agent_type}) ===")
+        # Read per-task timeout from config matrix
+        timeout_per_task = 300  # default 5 min
+        if self.config_matrix:
+            execution = self.config_matrix.get("execution", {})
+            timeout_per_task = execution.get("timeout_per_task_sec", 300)
+
+        print(f"=== Running {len(tasks)} tasks (Agent: {self.agent_type}, timeout: {timeout_per_task}s/task) ===")
         self.start_time = time.time()
 
         # Register interrupt handler
         original_handler = signal.signal(signal.SIGINT, self._handle_interrupt)
+
+        # Use SIGALRM for per-task timeout (Unix only, works on macOS/Linux)
+        use_alarm = hasattr(signal, 'SIGALRM')
+        if use_alarm:
+            original_alarm_handler = signal.signal(signal.SIGALRM, _timeout_handler)
 
         try:
             for i, task in enumerate(tasks, 1):
                 if self.interrupted:
                     print(f"\n{Colors.YELLOW}Stopping after {i-1} tasks...{Colors.RESET}")
                     break
-                result = self.run_task(task, i, len(tasks))
+
+                task_start = time.time()
+                try:
+                    # Set per-task alarm
+                    if use_alarm:
+                        signal.alarm(timeout_per_task)
+
+                    result = self.run_task(task, i, len(tasks))
+
+                    # Cancel alarm on success
+                    if use_alarm:
+                        signal.alarm(0)
+
+                except TaskTimeoutError:
+                    if use_alarm:
+                        signal.alarm(0)
+                    elapsed = time.time() - task_start
+                    print(f"  {Colors.YELLOW}TIMEOUT{Colors.RESET} Task {task['task_id']} exceeded {timeout_per_task}s ({elapsed:.0f}s)")
+                    result = {
+                        "task_id": task["task_id"],
+                        "category": task.get("category", "unknown"),
+                        "query": task.get("query", ""),
+                        "agent_type": self.agent_type,
+                        "state": ResultState.ERROR,
+                        "success": False,
+                        "tool_source": "failed",
+                        "execution_time_ms": int(elapsed * 1000),
+                        "duration_seconds": round(elapsed, 2),
+                        "error_type": f"TaskTimeout ({timeout_per_task}s)",
+                        "generated_code": None,
+                        "output": None,
+                        "refiner_attempts": 0,
+                        "stage_on_timeout": "timeout",
+                        "contract_id": task.get("contract_id"),
+                        "verification_stage": 0,
+                    }
+                except Exception as e:
+                    if use_alarm:
+                        signal.alarm(0)
+                    elapsed = time.time() - task_start
+                    result = {
+                        "task_id": task["task_id"],
+                        "category": task.get("category", "unknown"),
+                        "query": task.get("query", ""),
+                        "agent_type": self.agent_type,
+                        "state": ResultState.ERROR,
+                        "success": False,
+                        "tool_source": "failed",
+                        "execution_time_ms": int(elapsed * 1000),
+                        "duration_seconds": round(elapsed, 2),
+                        "error_type": str(e)[:100],
+                        "generated_code": None,
+                        "output": None,
+                        "refiner_attempts": 0,
+                        "stage_on_timeout": None,
+                        "contract_id": task.get("contract_id"),
+                        "verification_stage": 0,
+                    }
                 self.results.append(result)
         finally:
+            if use_alarm:
+                signal.alarm(0)
+                signal.signal(signal.SIGALRM, original_alarm_handler)
             signal.signal(signal.SIGINT, original_handler)
 
         # Save results (complete or partial)

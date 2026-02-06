@@ -411,6 +411,12 @@ class Synthesizer:
         if not use_refiner:
             return None, trace
 
+        # Skip refiner for AST_SECURITY failures — LLM can't fix banned imports/calls
+        stderr = trace.std_err or ""
+        if "AST_SECURITY" in stderr:
+            print("[Synthesizer] AST_SECURITY failure — skipping Refiner (unfixable by LLM)")
+            return None, trace
+
         # Import refiner here to avoid circular import
         from src.evolution.refiner import Refiner
 

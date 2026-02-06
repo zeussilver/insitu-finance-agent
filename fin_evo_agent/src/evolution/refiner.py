@@ -156,6 +156,8 @@ class Refiner:
         """
         Analyze error and create ErrorReport.
 
+        Uses regex-based classification instead of LLM call to save ~30s per attempt.
+
         Args:
             trace: Failed execution trace
             code: Source code that failed
@@ -166,41 +168,13 @@ class Refiner:
         stderr = trace.std_err or ""
         error_type, strategy = self._classify_error(stderr)
 
-        # Use LLM to analyze root cause
-        analysis_prompt = f"""分析以下Python代码执行错误的根本原因。
-
-## 代码
-```python
-{code}
-```
-
-## 错误信息
-```
-{stderr}
-```
-
-## 错误类型
-{error_type}
-
-请简洁地说明:
-1. 错误发生的具体原因
-2. 建议的修复方法
-
-只输出分析结果，不要输出代码。"""
-
-        result = self.llm.generate_tool_code(analysis_prompt)
-
-        # Extract text_response (LLM explanation) and thought_trace (internal reasoning)
-        text_response = result.get("text_response", "")
-        thought_trace = result.get("thought_trace", "")
-
-        # Truncate to reasonable length to keep prompts manageable
-        MAX_TEXT_LEN = 2000
-        if len(text_response) > MAX_TEXT_LEN:
-            text_response = text_response[:MAX_TEXT_LEN//2] + "\n...[truncated]...\n" + text_response[-MAX_TEXT_LEN//2:]
-
-        # Priority: text_response (explanation) > thought_trace (reasoning) > default
-        root_cause = text_response or thought_trace or f"{error_type}: {strategy}"
+        # Use regex classification directly — no LLM call needed
+        # The error type + strategy from _classify_error is sufficient context
+        # for generate_patch() to fix the issue
+        root_cause = f"{error_type}: {strategy}"
+        if stderr:
+            # Include first 200 chars of stderr for additional context
+            root_cause += f"\nError detail: {stderr[:200]}"
 
         # Create ErrorReport
         error_report = ErrorReport(
@@ -323,7 +297,7 @@ class Refiner:
         task: str,
         trace: ExecutionTrace,
         base_tool: Optional[ToolArtifact] = None,
-        max_attempts: int = 3,
+        max_attempts: int = 2,
         category: Optional[str] = None,
         contract: Optional[ToolContract] = None,
     ) -> Tuple[Optional[ToolArtifact], List[ErrorReport]]:
