@@ -29,6 +29,18 @@ benchmark_matrix:
     description: "Security validation only"
     use_case: "Quick security regression check"
 
+  # Batch Evolution Configuration
+  # Multi-round parallel synthesis with tool deduplication
+  batch_evolution:
+    clear_registry: true
+    clear_cache: true
+    description: "Multi-round batch evolution (parallel synthesis + dedup)"
+    use_case: "Paper experiment: measure self-evolving capability across rounds"
+    parallel_tasks: 3
+    num_rounds: 3
+    task_timeout_sec: 300
+    skip_existing: true
+
 # Execution Settings
 execution:
   timeout_per_task_sec: 300

@@ -40,6 +40,10 @@ from src.finance.data_proxy import get_stock_hist
 from src.core.task_executor import TaskExecutor
 from src.core.contracts import get_contract_by_id, get_contract, ToolContract
 from src.core.verifier import MultiStageVerifier
+from src.core.gateway import VerificationGateway
+from src.evolution.merger import SimpleDeduplicator
+from src.evolution.batch_manager import BatchEvolutionManager
+from src.evolution.metrics import EvolutionMetrics
 
 
 # --- ANSI Color Codes ---
@@ -872,6 +876,80 @@ class EvalRunner:
         result["duration_seconds"] = round(time.time() - start_time, 2)
         return result
 
+    def run_batch_evolution(
+        self,
+        tasks_file: str,
+        num_rounds: int = 1,
+        max_workers: int = 3,
+    ) -> List[Dict]:
+        """Run batch evolution: parallel synthesis + dedup + metrics.
+
+        After evolution rounds complete, executes all tasks to measure results.
+        """
+        tasks_path = Path(tasks_file)
+        if not tasks_path.exists():
+            print(f"Error: Tasks file not found: {tasks_file}")
+            return []
+
+        tasks = []
+        with open(tasks_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                if line.strip():
+                    tasks.append(json.loads(line))
+
+        timeout_per_task = 300
+        if self.config_matrix:
+            execution = self.config_matrix.get("execution", {})
+            timeout_per_task = execution.get("timeout_per_task_sec", 300)
+
+        # Build batch components
+        gateway = VerificationGateway(self.verifier, self.registry)
+        deduplicator = SimpleDeduplicator(self.registry)
+        metrics_collector = EvolutionMetrics()
+
+        batch_manager = BatchEvolutionManager(
+            synthesizer=self.synthesizer,
+            gateway=gateway,
+            deduplicator=deduplicator,
+            registry=self.registry,
+            metrics_collector=metrics_collector,
+            max_workers=max_workers,
+            task_timeout_sec=timeout_per_task,
+        )
+
+        print(f"\n{'=' * 60}")
+        print(f"{Colors.BOLD}BATCH EVOLUTION MODE{Colors.RESET}")
+        print(f"  Tasks: {len(tasks)}, Rounds: {num_rounds}, Workers: {max_workers}")
+        print(f"{'=' * 60}")
+
+        self.start_time = time.time()
+
+        # Run evolution rounds
+        if num_rounds > 1:
+            reports = batch_manager.evolve_multi_round(tasks, num_rounds=num_rounds)
+        else:
+            reports = [batch_manager.evolve_batch(tasks)]
+
+        # Print evolution summary
+        print(f"\n{Colors.BOLD}Evolution Summary:{Colors.RESET}")
+        for report in reports:
+            color = Colors.GREEN if report.synthesis_rate >= 0.8 else Colors.YELLOW
+            print(
+                f"  Round {report.round_number}: "
+                f"{color}{report.synthesis_rate:.0%}{Colors.RESET} synthesis, "
+                f"{report.reuse_rate:.0%} reuse, "
+                f"{report.dedup_merged} dedup, "
+                f"{report.total_time_sec:.1f}s"
+            )
+
+        # Print metrics table
+        table = metrics_collector.generate_summary_table()
+        print(f"\n{table}")
+
+        # Now execute all tasks to measure actual task success rate
+        print(f"\n{Colors.BOLD}Executing tasks with evolved tools...{Colors.RESET}")
+        return self.run_all_tasks(tasks_file)
+
     def run_all_tasks(self, tasks_file: str) -> List[Dict]:
         """Run all tasks from a JSONL file."""
         tasks_path = Path(tasks_file)
@@ -1068,10 +1146,16 @@ def main():
     parser.add_argument("--clear-registry", action="store_true",
                        help="Clear tool registry before running (fresh generation test)")
     parser.add_argument("--config", type=str, default=None,
-                       choices=["cold_start", "warm_start", "security_only"],
+                       choices=["cold_start", "warm_start", "security_only", "batch_evolution"],
                        help="Use predefined benchmark configuration from config_matrix.yaml")
     parser.add_argument("--config-file", type=str, default=None,
                        help="Path to custom config_matrix.yaml file")
+    parser.add_argument("--batch", action="store_true",
+                       help="Use batch evolution mode (parallel synthesis + deduplication)")
+    parser.add_argument("--rounds", type=int, default=1,
+                       help="Number of evolution rounds (requires --batch)")
+    parser.add_argument("--workers", type=int, default=3,
+                       help="Max parallel workers for batch mode (default: 3)")
 
     args = parser.parse_args()
 
@@ -1090,6 +1174,10 @@ def main():
             args.tasks_file = str(Path(__file__).parent / bench_config["tasks_file"])
         if args.config == "security_only":
             args.security_only = True
+        if args.config == "batch_evolution":
+            args.batch = True
+            args.rounds = bench_config.get("num_rounds", 3)
+            args.workers = bench_config.get("parallel_tasks", 3)
 
     if args.security_only:
         run_security_evaluation()
@@ -1103,7 +1191,14 @@ def main():
         if args.clear_registry:
             runner.clear_registry()
 
-        runner.run_all_tasks(args.tasks_file)
+        if args.batch:
+            runner.run_batch_evolution(
+                args.tasks_file,
+                num_rounds=args.rounds,
+                max_workers=args.workers,
+            )
+        else:
+            runner.run_all_tasks(args.tasks_file)
         runner.generate_report(args.run_id)
 
 

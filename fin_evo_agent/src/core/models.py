@@ -115,6 +115,9 @@ class ExecutionTrace(SQLModel, table=True):
     # the correct version instead of regenerated code
     code_content: Optional[str] = Field(default=None, sa_column=Column(Text))
 
+    # Batch evolution tracking
+    batch_id: Optional[str] = Field(default=None, index=True)
+
     # LLM and environment info
     llm_config: Dict = Field(default={}, sa_column=Column(JSON))
     env_snapshot: Dict = Field(default={}, sa_column=Column(JSON))
@@ -219,6 +222,7 @@ def _migrate_execution_traces(engine):
 
     new_columns = [
         ('code_content', 'TEXT'),  # P0-3: Store executed code for trace/code alignment
+        ('batch_id', 'TEXT'),      # Batch evolution round tracking
     ]
 
     with engine.connect() as conn:

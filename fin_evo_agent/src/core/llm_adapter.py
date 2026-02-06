@@ -456,11 +456,16 @@ class LLMAdapter:
         # Build user prompt
         user_prompt = f"Task: {task}"
 
-        # Add contract constraint (ultra-minimal but explicit)
+        # Add contract constraint (H-6 fix: stronger binding with enforcement framing)
         if contract:
             constraint = self._format_output_constraint(contract)
             if constraint:
-                user_prompt += f"\n\nOUTPUT: {constraint}"
+                user_prompt += (
+                    f"\n\n═══ MANDATORY OUTPUT CONTRACT ═══\n"
+                    f"{constraint}\n"
+                    f"Your code WILL BE REJECTED if the return type does not match this contract.\n"
+                    f"═════════════════════════════════"
+                )
 
         if error_context:
             user_prompt += f"\n\nPrevious Error:\n{error_context}\n\nFix the issue."

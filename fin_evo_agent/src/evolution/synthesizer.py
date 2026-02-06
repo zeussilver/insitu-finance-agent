@@ -340,8 +340,8 @@ class Synthesizer:
             print(f"\n[Synthesizer] Attempt {attempt + 1}/{max_attempts}")
 
             if error_context:
-                # Include error context for refinement
-                result = self.llm.generate_tool_code(task, error_context)
+                # Include error context for refinement (C-1 fix: preserve category/contract)
+                result = self.llm.generate_tool_code(task, error_context, category=category, contract=contract)
                 code = result.get("code_payload")
             else:
                 tool, trace = self.synthesize(task)

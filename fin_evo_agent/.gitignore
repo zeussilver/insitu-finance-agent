@@ -10,6 +10,19 @@ __pycache__/
 data/cache/
 data/db/
 
+# Runtime logs
+data/logs/
+
+# Rollback checkpoints
+data/checkpoints/
+
+# Generated tool artifacts (evolved tools)
+data/artifacts/generated/
+
+# Benchmark results (generated per run)
+benchmarks/results/
+benchmarks/eval_report_*.csv
+
 # IDE
 .idea/
 .vscode/
